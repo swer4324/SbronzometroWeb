@@ -306,7 +306,11 @@ export function App() {
             ) : (
               <>
                 <section className="home-stack">
-                  <div className="section-title compact-title"><div><span className="eyebrow">{t("activeProfile")}</span><h1>{t("profiles")}</h1></div></div>
+                  <div className="section-title compact-title home-section-title">
+                    <div>
+                      <h2>La situazione di stasera</h2>
+                    </div>
+                  </div>
                   <div className="status-list">
                     {profileStatuses.map(({ profile, result: profileResult }) => (
                       <ProfileStatusCard
@@ -323,16 +327,13 @@ export function App() {
                 </section>
 
                 <section className="quick-panel">
-                  <div className="quick-panel-header">
-                    <span className="eyebrow">{t("diary")}</span>
-                  </div>
                   <div className="quick-actions">
-                    <button className="primary-action" onClick={openNewDrink}><span>＋</span>{t("addDrink")}</button>
-                    <button className="secondary-action" onClick={openNewMeal}><span>🍕</span>{t("addMeal")}</button>
+                    <button className="primary-action" onClick={openNewDrink}><span>🍹</span>Segna drink</button>
+                    <button className="secondary-action" onClick={openNewMeal}><span>🍽</span>Segna pasto</button>
                   </div>
                 </section>
 
-                <div className="home-disclaimer">Stima teorica. Se bevi, non guidare.</div>
+                <div className="home-disclaimer"><span>ℹ</span>Stima teorica, nessun valore legale.</div>
               </>
             )}
           </>
@@ -361,6 +362,7 @@ export function App() {
             <div className="section-title"><div><span className="eyebrow">{t("onDevice")}</span><h1>{t("history")}</h1></div><button onClick={() => setView("reports")}>{t("report")}</button></div>
             <GroupedEventList
               language={language}
+              currencyCode={currencyCode}
               events={[
                 ...drinks.map((drink) => ({ kind: "drink" as const, timestamp: drink.timestampMillis, drink })),
                 ...meals.map((meal) => ({ kind: "meal" as const, timestamp: meal.timestampMillis, meal }))
@@ -488,9 +490,24 @@ export function App() {
               <label>{t("alcohol")}<input required min="0.1" max="100" step="0.1" type="number" value={drinkDraft.alcoholPercent} onChange={(event) => setDrinkDraft({ ...drinkDraft, alcoholPercent: Number(event.target.value) })} /></label>
               <label>{t("volume")}<input required min="1" max="5000" type="number" value={drinkDraft.volumeMl} onChange={(event) => setDrinkDraft({ ...drinkDraft, volumeMl: Number(event.target.value) })} /></label>
             </div>
+            <div className="preset-strip">
+              {volumePresetsFor(drinkDraft.drinkType).map((preset) => (
+                <button key={preset} type="button" className={`preset-chip ${drinkDraft.volumeMl === preset ? "selected" : ""}`} onClick={() => setDrinkDraft({ ...drinkDraft, volumeMl: preset })}>
+                  {preset} ml
+                </button>
+              ))}
+            </div>
             <div className="form-pair">
               <label>{t("price")} ({currencyCode})<input min="0" step="0.01" type="number" value={drinkDraft.price ?? ""} onChange={(event) => setDrinkDraft({ ...drinkDraft, price: event.target.value ? Number(event.target.value) : null, currencyCode })} /></label>
               <label>{t("dateTime")}<input required type="datetime-local" value={toLocalInput(drinkDraft.timestampMillis)} onChange={(event) => setDrinkDraft({ ...drinkDraft, timestampMillis: new Date(event.target.value).getTime() })} /></label>
+            </div>
+            <div className="preset-strip">
+              <button type="button" className="preset-chip" onClick={() => setDrinkDraft({ ...drinkDraft, timestampMillis: Date.now() })}>Ora</button>
+              {[15, 30, 45].map((minutes) => (
+                <button key={minutes} type="button" className="preset-chip" onClick={() => setDrinkDraft({ ...drinkDraft, timestampMillis: Date.now() - minutes * 60_000 })}>
+                  -{minutes} min
+                </button>
+              ))}
             </div>
             {!drinkDraft.id && <label className="check-label"><input type="checkbox" checked={saveAsCustom} onChange={(event) => setSaveAsCustom(event.target.checked)} /> {t("saveCustom")}</label>}
             <button className="primary-action" type="submit">{drinkDraft.id ? t("saveChanges") : t("addDrink")}</button>
@@ -542,7 +559,7 @@ function BacGauge({ bac, peak }: { bac: number; peak: number }) {
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
 
     const strokeWidth = 16;
-    const radius = Math.min(width / 2 - strokeWidth - 10, height - strokeWidth * 2);
+    const radius = width / 2 - strokeWidth;
     const centerX = width / 2;
     const centerY = strokeWidth + radius;
 
@@ -550,26 +567,33 @@ function BacGauge({ bac, peak }: { bac: number; peak: number }) {
       context.clearRect(0, 0, width, height);
       context.lineCap = "round";
 
-      const gradient = context.createConicGradient(startAngle - Math.PI / 2, centerX, centerY);
-      gradient.addColorStop(0, "#4caf50");
-      gradient.addColorStop(0.17, "#4caf50");
-      gradient.addColorStop(0.33, "#8bc34a");
-      gradient.addColorStop(0.49, "#ffc107");
-      gradient.addColorStop(0.67, "#ff9800");
-      gradient.addColorStop(0.84, "#f44336");
-      gradient.addColorStop(1, "#b71c1c");
+      const createBacGradient = (alpha: number) => {
+        const gradient = context.createConicGradient(0, centerX, centerY);
+        gradient.addColorStop(0, `rgba(183, 28, 28, ${alpha})`);
+        gradient.addColorStop(100 / 360, `rgba(183, 28, 28, ${alpha})`);
+        gradient.addColorStop(160 / 360, `rgba(76, 175, 80, ${alpha})`);
+        gradient.addColorStop(170 / 360, `rgba(76, 175, 80, ${alpha})`);
+        gradient.addColorStop(203.3 / 360, `rgba(139, 195, 74, ${alpha})`);
+        gradient.addColorStop(223.3 / 360, `rgba(255, 193, 7, ${alpha})`);
+        gradient.addColorStop(270 / 360, `rgba(244, 67, 54, ${alpha})`);
+        gradient.addColorStop(1, `rgba(183, 28, 28, ${alpha})`);
+        return gradient;
+      };
 
-      context.strokeStyle = "rgba(255,255,255,0.10)";
-      context.lineWidth = strokeWidth + 8;
-      context.beginPath();
-      context.arc(centerX, centerY, radius, startAngle, startAngle + totalSweep);
-      context.stroke();
-
-      context.strokeStyle = gradient;
+      context.strokeStyle = createBacGradient(0.2);
       context.lineWidth = strokeWidth;
       context.beginPath();
       context.arc(centerX, centerY, radius, startAngle, startAngle + totalSweep);
       context.stroke();
+
+      const currentSweep = (currentBac / maxScale) * totalSweep;
+      if (currentSweep > 0) {
+        context.strokeStyle = createBacGradient(1);
+        context.lineWidth = strokeWidth;
+        context.beginPath();
+        context.arc(centerX, centerY, radius, startAngle, startAngle + currentSweep);
+        context.stroke();
+      }
 
       const safeAngle = startAngle + (0.5 / maxScale) * totalSweep;
       context.save();
@@ -659,25 +683,45 @@ function Metric({ label, value }: { label: string; value: string }) {
   return <div className="metric"><span>{label}</span><strong>{value}</strong></div>;
 }
 
+function bacLevelColor(level: ReturnType<typeof calculateCurrentBac>["bacLevel"]): string {
+  switch (level) {
+    case "SOBER_SAFE":
+      return "#4caf50";
+    case "LIGHT":
+      return "#8bc34a";
+    case "TIPSY":
+      return "#ffc107";
+    case "OVER_LIMIT":
+      return "#ff9800";
+    case "PENAL_RISK":
+      return "#f44336";
+    case "SEVERE_EBRIETY":
+      return "#d32f2f";
+    case "CRITICAL_DANGER":
+      return "#b71c1c";
+  }
+}
+
 function ProfileStatusCard({ language, profile, result, expanded, onToggle, onActivate }: { language: Language; profile: UserProfile; result: ReturnType<typeof calculateCurrentBac>; expanded: boolean; onToggle: () => void; onActivate: () => void }) {
   const isOverLimit = result.bacLevel === "OVER_LIMIT" || result.bacLevel === "PENAL_RISK" || result.bacLevel === "SEVERE_EBRIETY" || result.bacLevel === "CRITICAL_DANGER";
-  const timeLabel = isOverLimit ? "NON GUIDARE" : result.estimatedMinutesUntilLegalLimit > 0 ? formatMinutes(result.estimatedMinutesUntilLegalLimit) : "Sei ok";
+  const levelColor = bacLevelColor(result.bacLevel);
+  const timeLabel = isOverLimit ? "NON GUIDARE" : result.estimatedMinutesUntilLegalLimit > 0 ? `Sotto 0,5 tra ${formatMinutes(result.estimatedMinutesUntilLegalLimit)}` : "Sotto 0,5";
   const trendLabel = result.peakAlreadyPassed ? "In discesa" : "In salita";
 
   return <article className={`status-card ${profile.isActive ? "active" : ""}`}>
     <div className="status-card-header">
       <button type="button" className="status-main" onClick={onToggle}>
         <div className="status-name-row">
-          <strong>{profile.name}</strong>
-          {profile.isActive ? <span className="active-badge">ATTIVO</span> : <span className="activate-link">Profilo inattivo</span>}
+          <strong className={profile.isActive ? "active-name" : ""}>{profile.name}</strong>
+          {profile.isActive ? <span className="active-badge">ATTIVO</span> : <span className="activate-link">Attiva</span>}
         </div>
         <div className="status-compact-row">
           <div>
-            <div className="status-bac">{result.bac.toFixed(2)}</div>
+            <div className="status-bac" style={{ color: result.bac > 0.1 ? levelColor : undefined }}>{result.bac.toFixed(2)}</div>
             <div className="status-unit">g/L</div>
           </div>
           <div className="status-side">
-            <span className={`level-pill level-${result.bacLevel.toLowerCase()}`}>{bacLevelLabel(language, result.bacLevel)}</span>
+            <span className={`level-pill level-${result.bacLevel.toLowerCase()}`} style={{ color: levelColor, borderColor: `${levelColor}55`, background: `${levelColor}22` }}>{bacLevelLabel(language, result.bacLevel)}</span>
             <span className={`status-driving ${isOverLimit ? "danger" : ""}`}>{timeLabel}</span>
           </div>
         </div>
@@ -709,7 +753,7 @@ function EventList({ language, events, profiles, onDelete, onEdit }: { language:
   })}</div>;
 }
 
-function GroupedEventList({ language, events, profiles, onDelete, onEdit }: { language: Language; events: BacEvent[]; profiles: UserProfile[]; onDelete?: (event: BacEvent) => void; onEdit?: (event: BacEvent) => void }) {
+function GroupedEventList({ language, currencyCode, events, profiles, onDelete, onEdit }: { language: Language; currencyCode: string; events: BacEvent[]; profiles: UserProfile[]; onDelete?: (event: BacEvent) => void; onEdit?: (event: BacEvent) => void }) {
   if (!events.length) return <div className="empty-list">{translate(language, "emptyEvents")}</div>;
   const groups = new Map<string, BacEvent[]>();
   for (const event of events) {
@@ -717,7 +761,22 @@ function GroupedEventList({ language, events, profiles, onDelete, onEdit }: { la
     const key = new Date(date.getFullYear(), date.getMonth(), date.getDate()).toISOString();
     groups.set(key, [...(groups.get(key) ?? []), event]);
   }
-  return <div className="grouped-events">{[...groups.entries()].map(([key, grouped]) => <section key={key} className="event-group"><div className="event-group-title">{new Date(key).toLocaleDateString(localeFor(language), { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}</div><EventList language={language} events={grouped} profiles={profiles} onDelete={onDelete} onEdit={onEdit} /></section>)}</div>;
+  return <div className="grouped-events">{[...groups.entries()].map(([key, grouped]) => {
+    const drinksForDay = grouped.filter((event): event is Extract<BacEvent, { kind: "drink" }> => event.kind === "drink");
+    const mealsForDay = grouped.filter((event): event is Extract<BacEvent, { kind: "meal" }> => event.kind === "meal");
+    const totalSpent = drinksForDay.reduce((sum, event) => sum + (event.drink.price ?? 0), 0);
+    const spentLabel = new Intl.NumberFormat(localeFor(language), { style: "currency", currency: currencyCode }).format(totalSpent);
+
+    return <section key={key} className="event-group">
+      <div className="event-group-title">{new Date(key).toLocaleDateString(localeFor(language), { weekday: "long", day: "numeric", month: "long" }).toUpperCase()}</div>
+      <div className="event-day-summary">
+        <span>{drinksForDay.length} drink</span>
+        <span>{mealsForDay.length} pasti</span>
+        <strong>{spentLabel}</strong>
+      </div>
+      <EventList language={language} events={grouped} profiles={profiles} onDelete={onDelete} onEdit={onEdit} />
+    </section>;
+  })}</div>;
 }
 
 function Modal({ title, closeLabel, onClose, children }: { title: string; closeLabel: string; onClose: () => void; children: React.ReactNode }) {
@@ -735,6 +794,24 @@ function formatMinutes(minutes: number): string {
 
 function formatDays(days: number, language: Language): string {
   return `${days} ${translate(language, days === 1 ? "day" : "days")}`;
+}
+
+function volumePresetsFor(type: DrinkEntry["drinkType"]): number[] {
+  switch (type) {
+    case "BEER_DRAUGHT":
+      return [200, 300, 400, 500];
+    case "BEER_BOTTLE":
+      return [330, 500, 660];
+    case "WINE":
+      return [100, 125, 150, 250];
+    case "COCKTAIL":
+      return [180, 200, 250, 330];
+    case "SHOT":
+    case "SPIRITS":
+      return [30, 40, 50, 60];
+    case "CUSTOM":
+      return [30, 50, 100, 150, 250, 330, 500];
+  }
 }
 
 function PlayStoreBanner({ language }: { language: Language }) {
