@@ -11,14 +11,32 @@
       const isDocsPath = window.location.pathname.includes("/docs/");
       if (!isLocalHost && !isDocsPath) {
         window.location.replace("./docs/");
+      } else {
+        const favicon = document.createElement("link");
+        favicon.rel = "icon";
+        favicon.href = "./icon.svg";
+        document.head.appendChild(favicon);
+
+        const appleIcon = document.createElement("link");
+        appleIcon.rel = "apple-touch-icon";
+        appleIcon.href = "./icon.svg";
+        document.head.appendChild(appleIcon);
       }
     </script>
-    <link rel="icon" href="./icon.svg" />
-    <link rel="apple-touch-icon" href="./icon.svg" />
+    <noscript>
+      <meta http-equiv="refresh" content="0; url=./docs/" />
+    </noscript>
     <title>Sbronzometro</title>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="./src/main.tsx"></script>
+    <script>
+      if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
+        const appScript = document.createElement("script");
+        appScript.type = "module";
+        appScript.src = "./src/main.tsx";
+        document.body.appendChild(appScript);
+      }
+    </script>
   </body>
 </html>
