@@ -1,0 +1,1 @@
+{"name":"Sbronzometro","short_name":"Sbronzometro","description":"Stima locale e offline del tasso alcolemico.","start_url":"./","display":"standalone","background_color":"#0c1714","theme_color":"#0c1714","lang":"en","scope":"./","orientation":"portrait","icons":[{"src":"icon.svg","sizes":"any","type":"image/svg+xml","purpose":"any maskable"}]}
