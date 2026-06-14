@@ -6,37 +6,12 @@
     <meta name="theme-color" content="#0c1714" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <script>
-      const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-      const isDocsPath = window.location.pathname.includes("/docs/");
-      if (!isLocalHost && !isDocsPath) {
-        window.location.replace("./docs/");
-      } else {
-        const favicon = document.createElement("link");
-        favicon.rel = "icon";
-        favicon.href = "./icon.svg";
-        document.head.appendChild(favicon);
-
-        const appleIcon = document.createElement("link");
-        appleIcon.rel = "apple-touch-icon";
-        appleIcon.href = "./icon.svg";
-        document.head.appendChild(appleIcon);
-      }
-    </script>
-    <noscript>
-      <meta http-equiv="refresh" content="0; url=./docs/" />
-    </noscript>
+    <link rel="icon" href="./icon.svg" />
+    <link rel="apple-touch-icon" href="./icon.svg" />
     <title>Sbronzometro</title>
   </head>
   <body>
     <div id="root"></div>
-    <script>
-      if (["localhost", "127.0.0.1"].includes(window.location.hostname)) {
-        const appScript = document.createElement("script");
-        appScript.type = "module";
-        appScript.src = "./src/main.tsx";
-        document.body.appendChild(appScript);
-      }
-    </script>
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>

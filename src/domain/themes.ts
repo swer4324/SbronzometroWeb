@@ -23,6 +23,15 @@ export const secretThemes: { id: ThemeVariant; name: string; hint: string; icon:
   { id: "broken_heart", name: "Cuore infranto", hint: "Una settimana che lascia il segno.", icon: "♥" }
 ];
 
+const allThemeVariants = new Set<ThemeVariant>([
+  ...standardThemes.map((variant) => variant.id),
+  ...secretThemes.map((variant) => variant.id)
+]);
+
+export function isThemeVariant(value: unknown): value is ThemeVariant {
+  return typeof value === "string" && allThemeVariants.has(value as ThemeVariant);
+}
+
 const dayKey = (timestamp: number) => {
   const date = new Date(timestamp);
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;

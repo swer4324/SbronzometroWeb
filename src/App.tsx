@@ -20,7 +20,7 @@ import {
 } from "./data/db";
 import { calculateCurrentBac } from "./domain/bacCalculator";
 import { calculateWeeklyReports } from "./domain/weeklyReports";
-import { evaluateThemeUnlocks, secretThemes, standardThemes, type ThemeVariant } from "./domain/themes";
+import { evaluateThemeUnlocks, isThemeVariant, secretThemes, standardThemes, type ThemeVariant } from "./domain/themes";
 import { bacLevelLabel, bacSuggestion, disclaimerTranslations, drinkTemplateName, languageNames, localeFor, mealLabel, onboardingTranslations, secretThemeTranslation, translate, type Language } from "./domain/i18n";
 import {
   drinkTemplates,
@@ -94,6 +94,7 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, setClock] = useState(Date.now());
+  const validSecretThemeIds = secretThemes.map((variant) => variant.id);
 
   const activeProfile = profiles.find((profile) => profile.isActive) ?? profiles[0];
   const activeEvents: BacEvent[] = activeProfile?.id
@@ -131,10 +132,11 @@ export function App() {
       setCurrencyCode(storedCurrency);
       setDisclaimerAccepted(storedDisclaimer);
       setOnboardingCompleted(storedOnboarding);
-      setThemeVariant(storedThemeVariant);
-      const evaluatedUnlocks = [...new Set([...storedUnlocks, ...evaluateThemeUnlocks(storedDrinks)])];
+      setThemeVariant(isThemeVariant(storedThemeVariant) ? storedThemeVariant : "classic");
+      const safeStoredUnlocks = storedUnlocks.filter(isThemeVariant).filter((variant) => validSecretThemeIds.includes(variant));
+      const evaluatedUnlocks = [...new Set([...safeStoredUnlocks, ...evaluateThemeUnlocks(storedDrinks)])];
       setUnlockedThemes(evaluatedUnlocks);
-      if (evaluatedUnlocks.length !== storedUnlocks.length) await setPreference("unlockedThemes", evaluatedUnlocks);
+      if (evaluatedUnlocks.length !== safeStoredUnlocks.length) await setPreference("unlockedThemes", evaluatedUnlocks);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : translate(language, "readError"));
     } finally {
@@ -165,8 +167,22 @@ export function App() {
   }, [activeProfile?.id]);
 
   async function selectThemeVariant(variant: ThemeVariant) {
-    setThemeVariant(variant);
-    await setPreference("themeVariant", variant);
+    if (!isThemeVariant(variant)) {
+      setError("Tema non valido.");
+      return;
+    }
+    if (validSecretThemeIds.includes(variant) && !unlockedThemes.includes(variant)) {
+      setError("Tema segreto non ancora sbloccato.");
+      return;
+    }
+    try {
+      setError(null);
+      setThemeVariant(variant);
+      await setPreference("themeVariant", variant);
+    } catch (cause) {
+      setThemeVariant("classic");
+      setError(cause instanceof Error ? cause.message : "Impossibile applicare il tema.");
+    }
   }
 
   async function submitProfile(event: React.FormEvent) {
@@ -294,11 +310,10 @@ export function App() {
         </button>
       </header>
 
-      <PlayStoreBanner language={language} />
-
       {error && <div className="error-banner" role="alert">{error}</div>}
 
       <main className="main-content">
+        <PlayStoreBanner language={language} />
         {view === "home" && (
           <>
             {!activeProfile || !result ? (
@@ -409,7 +424,7 @@ export function App() {
               <h2>{t("colorStyle")}</h2>
               <p>{t("colorStyleHelp")}</p>
               <div className="theme-grid">
-                {standardThemes.map((variant) => <button className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span style={{ background: variant.swatch }} /><strong>{variant.name}</strong></button>)}
+                {standardThemes.map((variant) => <button type="button" className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span style={{ background: variant.swatch }} /><strong>{variant.name}</strong></button>)}
               </div>
             </article>
             <article className="settings-card">
@@ -419,7 +434,7 @@ export function App() {
                 {secretThemes.map((variant) => {
                   const unlocked = unlockedThemes.includes(variant.id);
                   const [name, hint] = secretThemeTranslation(language, variant.id, variant.name, variant.hint);
-                  return <button disabled={!unlocked} className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span>{unlocked ? variant.icon : "⌾"}</span><div><strong>{name}</strong><small>{unlocked ? t("unlocked") : hint}</small></div></button>;
+                  return <button type="button" disabled={!unlocked} className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span>{unlocked ? variant.icon : "⌾"}</span><div><strong>{name}</strong><small>{unlocked ? t("unlocked") : hint}</small></div></button>;
                 })}
               </div>
             </article>
@@ -433,7 +448,7 @@ export function App() {
             <article className="settings-card">
               <h2>{t("localBackup")}</h2>
               <p>{t("backupHelp")}</p>
-              <button className="primary-action" onClick={downloadBackup}>{t("downloadBackup")}</button>
+              <button type="button" className="primary-action" onClick={downloadBackup}>{t("downloadBackup")}</button>
               <label className="secondary-action file-action">{t("importBackup")}<input type="file" accept="application/json,.json" onChange={(event) => void uploadBackup(event.target.files?.[0])} /></label>
             </article>
             <article className="settings-card">
@@ -441,14 +456,14 @@ export function App() {
               <p>{t("customHelp")}</p>
               <div className="custom-list">
                 {customDrinks.length === 0 && <span className="muted">{t("noCustom")}</span>}
-                {customDrinks.map((drink) => <div key={drink.id}><span>{drink.icon} {drink.name} · {drink.volumeMl} ml</span><button onClick={async () => { await deleteCustomDrink(drink.id!); await refresh(); }}>{t("delete")}</button></div>)}
+                {customDrinks.map((drink) => <div key={drink.id}><span>{drink.icon} {drink.name} · {drink.volumeMl} ml</span><button type="button" onClick={async () => { await deleteCustomDrink(drink.id!); await refresh(); }}>{t("delete")}</button></div>)}
               </div>
             </article>
             <article className="settings-card warning-card">
               <h2>{t("importantReminder")}</h2>
               <p>{t("safetyReminder")}</p>
-              <button className="secondary-action" onClick={() => { setOnboardingStep(0); setOnboardingCompleted(false); }}>{t("reviewIntro")}</button>
-              <button className="secondary-action" onClick={() => { setTosAccepted(false); setDisclaimerAccepted(false); }}>{t("reviewWarning")}</button>
+              <button type="button" className="secondary-action" onClick={() => { setOnboardingStep(0); setOnboardingCompleted(false); }}>{t("reviewIntro")}</button>
+              <button type="button" className="secondary-action" onClick={() => { setTosAccepted(false); setDisclaimerAccepted(false); }}>{t("reviewWarning")}</button>
             </article>
           </section>
         )}
