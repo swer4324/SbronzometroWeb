@@ -1,21 +1,48 @@
 # Distribuzione della WebApp
 
-La cartella da pubblicare è `dist`, generata con:
+Per lavorare in locale:
 
 ```powershell
 npm install
+npm run dev
+```
+
+Per generare la build di produzione:
+
+```powershell
 npm test
 npm run build
 ```
 
-## Hosting consigliato: Cloudflare Pages
+Per preparare GitHub Pages nel formato corretto:
 
-1. Crea un progetto Pages collegato al repository.
-2. Imposta la cartella del progetto su `web`.
-3. Usa `npm run build` come comando di build e `dist` come directory di output.
-4. Attiva un dominio HTTPS. HTTPS è obbligatorio per service worker e installazione PWA.
+```powershell
+npm run pages
+```
 
-Il file `public/_headers` aggiunge header di sicurezza e impedisce che service worker e manifest rimangano bloccati in una cache vecchia.
+Questo comando:
+
+- genera `dist/`;
+- copia la build pronta dentro `docs/` del repository;
+- lascia `node_modules/` fuori dal versionamento, come deve essere.
+
+## GitHub Pages
+
+1. Esegui `npm run pages`.
+2. Verifica che nel repository esista `docs/index.html`.
+3. Fai commit e push di `docs/` insieme ai sorgenti.
+4. In GitHub Pages imposta:
+   - `Deploy from branch`
+   - branch `main`
+   - folder `/docs`
+
+Da non pubblicare:
+
+- `SbronzometroWeb/index.html` come file statico aperto direttamente;
+- `node_modules/`;
+- `dist/` se usi GitHub Pages con `/docs`.
+
+Il file `_headers` resta utile per hosting statici che lo supportano, ma GitHub Pages non applica quei custom headers.
 
 ## Installazione su iPhone
 

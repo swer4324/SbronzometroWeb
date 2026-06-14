@@ -11,6 +11,40 @@ npm run dev
 
 Aprire l'indirizzo mostrato da Vite, normalmente `http://localhost:5173`.
 
+Non aprire `index.html` con doppio click: la webapp va servita da Vite o da un server HTTP.
+
+## Preview della build
+
+```powershell
+npm run build
+npm run preview -- --port 4174
+```
+
+Poi aprire `http://127.0.0.1:4174`.
+
+## GitHub Pages
+
+```powershell
+npm run pages
+```
+
+Questo comando genera `dist/` e aggiorna `docs/` dentro il repository.
+
+Per GitHub Pages:
+
+- branch `main`
+- cartella `/docs`
+
+Da pubblicare su GitHub:
+
+- sorgenti del progetto;
+- `docs/`
+
+Da non pubblicare:
+
+- `node_modules/`
+- `dist/` se usi Pages con `/docs`
+
 ## Verifiche
 
 ```powershell
