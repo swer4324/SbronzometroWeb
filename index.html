@@ -6,6 +6,13 @@
     <meta name="theme-color" content="#0c1714" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <script>
+      const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+      const isDocsPath = window.location.pathname.includes("/docs/");
+      if (!isLocalHost && !isDocsPath) {
+        window.location.replace("./docs/");
+      }
+    </script>
     <link rel="icon" href="./icon.svg" />
     <link rel="apple-touch-icon" href="./icon.svg" />
     <title>Sbronzometro</title>
