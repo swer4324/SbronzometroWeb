@@ -34,6 +34,10 @@ import {
 
 type View = "home" | "history" | "reports" | "profiles" | "settings";
 
+const WEB_THEME_LOCKED = true;
+const SAFE_THEME: "light" | "dark" = "dark";
+const SAFE_THEME_VARIANT: ThemeVariant = "classic";
+
 const emptyProfile: UserProfile = {
   name: "",
   weightKg: 75,
@@ -77,7 +81,7 @@ export function App() {
   const [onboardingCompleted, setOnboardingCompleted] = useState(true);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [tosAccepted, setTosAccepted] = useState(false);
-  const [themeVariant, setThemeVariant] = useState<ThemeVariant>("classic");
+  const [themeVariant, setThemeVariant] = useState<ThemeVariant>(SAFE_THEME_VARIANT);
   const [unlockedThemes, setUnlockedThemes] = useState<ThemeVariant[]>([]);
   const [view, setView] = useState<View>("home");
   const [expandedProfiles, setExpandedProfiles] = useState<number[]>([]);
@@ -90,7 +94,7 @@ export function App() {
   const [mealType, setMealType] = useState<StomachState>("LIGHT_MEAL");
   const [mealDraft, setMealDraft] = useState<MealEntry>({ userId: 0, mealType: "LIGHT_MEAL", timestampMillis: Date.now() });
   const [saveAsCustom, setSaveAsCustom] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">(() => (localStorage.getItem("theme") === "light" ? "light" : "dark"));
+  const [theme, setTheme] = useState<"light" | "dark">(SAFE_THEME);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, setClock] = useState(Date.now());
@@ -132,7 +136,13 @@ export function App() {
       setCurrencyCode(storedCurrency);
       setDisclaimerAccepted(storedDisclaimer);
       setOnboardingCompleted(storedOnboarding);
-      setThemeVariant(isThemeVariant(storedThemeVariant) ? storedThemeVariant : "classic");
+      const nextThemeVariant = WEB_THEME_LOCKED
+        ? SAFE_THEME_VARIANT
+        : (isThemeVariant(storedThemeVariant) ? storedThemeVariant : SAFE_THEME_VARIANT);
+      setThemeVariant(nextThemeVariant);
+      if (WEB_THEME_LOCKED && storedThemeVariant !== SAFE_THEME_VARIANT) {
+        await setPreference("themeVariant", SAFE_THEME_VARIANT);
+      }
       const safeStoredUnlocks = storedUnlocks.filter(isThemeVariant).filter((variant) => validSecretThemeIds.includes(variant));
       const evaluatedUnlocks = [...new Set([...safeStoredUnlocks, ...evaluateThemeUnlocks(storedDrinks)])];
       setUnlockedThemes(evaluatedUnlocks);
@@ -152,6 +162,12 @@ export function App() {
   }, []);
 
   useEffect(() => {
+    if (!WEB_THEME_LOCKED) return;
+    if (theme !== SAFE_THEME) setTheme(SAFE_THEME);
+    if (themeVariant !== SAFE_THEME_VARIANT) setThemeVariant(SAFE_THEME_VARIANT);
+  }, [theme, themeVariant]);
+
+  useEffect(() => {
     document.documentElement.dataset.theme = theme;
     document.documentElement.dataset.variant = themeVariant;
     localStorage.setItem("theme", theme);
@@ -167,6 +183,11 @@ export function App() {
   }, [activeProfile?.id]);
 
   async function selectThemeVariant(variant: ThemeVariant) {
+    if (WEB_THEME_LOCKED) {
+      setThemeVariant(SAFE_THEME_VARIANT);
+      setError("Tema bloccato sulla versione web per evitare crash.");
+      return;
+    }
     if (!isThemeVariant(variant)) {
       setError("Tema non valido.");
       return;
@@ -305,9 +326,11 @@ export function App() {
           <span className="brand-mark">S</span>
           <span><strong>Sbronzometro</strong><small>{t("offline")}</small></span>
         </button>
-        <button className="icon-button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("changeTheme")}>
-          {theme === "dark" ? "☀" : "☾"}
-        </button>
+        {!WEB_THEME_LOCKED && (
+          <button className="icon-button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("changeTheme")}>
+            {theme === "dark" ? "☀" : "☾"}
+          </button>
+        )}
       </header>
 
       {error && <div className="error-banner" role="alert">{error}</div>}
@@ -420,24 +443,33 @@ export function App() {
         {view === "settings" && (
           <section>
             <div className="section-title"><div><span className="eyebrow">{t("dataFirstAid")}</span><h1>{t("settings")}</h1></div></div>
-            <article className="settings-card">
-              <h2>{t("colorStyle")}</h2>
-              <p>{t("colorStyleHelp")}</p>
-              <div className="theme-grid">
-                {standardThemes.map((variant) => <button type="button" className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span style={{ background: variant.swatch }} /><strong>{variant.name}</strong></button>)}
-              </div>
-            </article>
-            <article className="settings-card">
-              <h2>{t("secretThemes")}</h2>
-              <p>{t("unlockedCount", { count: unlockedThemes.length, total: secretThemes.length })}</p>
-              <div className="secret-theme-list">
-                {secretThemes.map((variant) => {
-                  const unlocked = unlockedThemes.includes(variant.id);
-                  const [name, hint] = secretThemeTranslation(language, variant.id, variant.name, variant.hint);
-                  return <button type="button" disabled={!unlocked} className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span>{unlocked ? variant.icon : "⌾"}</span><div><strong>{name}</strong><small>{unlocked ? t("unlocked") : hint}</small></div></button>;
-                })}
-              </div>
-            </article>
+            {WEB_THEME_LOCKED ? (
+              <article className="settings-card warning-card">
+                <h2>{t("colorStyle")}</h2>
+                <p>Su questa versione web i temi sono stati disattivati per evitare blocchi nel menu impostazioni. Se avevi un tema salvato, viene riportato automaticamente a un preset stabile.</p>
+              </article>
+            ) : (
+              <>
+                <article className="settings-card">
+                  <h2>{t("colorStyle")}</h2>
+                  <p>{t("colorStyleHelp")}</p>
+                  <div className="theme-grid">
+                    {standardThemes.map((variant) => <button type="button" className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span style={{ background: variant.swatch }} /><strong>{variant.name}</strong></button>)}
+                  </div>
+                </article>
+                <article className="settings-card">
+                  <h2>{t("secretThemes")}</h2>
+                  <p>{t("unlockedCount", { count: unlockedThemes.length, total: secretThemes.length })}</p>
+                  <div className="secret-theme-list">
+                    {secretThemes.map((variant) => {
+                      const unlocked = unlockedThemes.includes(variant.id);
+                      const [name, hint] = secretThemeTranslation(language, variant.id, variant.name, variant.hint);
+                      return <button type="button" disabled={!unlocked} className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span>{unlocked ? variant.icon : "⌾"}</span><div><strong>{name}</strong><small>{unlocked ? t("unlocked") : hint}</small></div></button>;
+                    })}
+                  </div>
+                </article>
+              </>
+            )}
             <article className="settings-card">
               <h2>{t("languageCurrency")}</h2>
               <div className="form-pair">
