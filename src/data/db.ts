@@ -1,7 +1,7 @@
 import type { CustomDrink, DrinkEntry, MealEntry, UserProfile } from "../domain/models";
 
 const DB_NAME = "sbronzometro-web";
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const STORES = {
   profiles: "profiles",
@@ -119,9 +119,10 @@ export async function deleteProfile(profileId: number): Promise<void> {
   await transactionDone(transaction);
 }
 
-export async function addDrink(drink: DrinkEntry): Promise<void> {
+export async function addDrink(drink: DrinkEntry): Promise<number> {
   const db = await openDatabase();
-  await requestToPromise(db.transaction(STORES.drinks, "readwrite").objectStore(STORES.drinks).put(drink));
+  const id = await requestToPromise(db.transaction(STORES.drinks, "readwrite").objectStore(STORES.drinks).put(drink));
+  return Number(id);
 }
 
 export async function addMeal(meal: MealEntry): Promise<void> {
@@ -172,21 +173,32 @@ export async function setPreference<T>(key: string, value: T): Promise<void> {
   await requestToPromise(db.transaction(STORES.preferences, "readwrite").objectStore(STORES.preferences).put({ key, value }));
 }
 
+export async function getAllPreferences(): Promise<Record<string, unknown>> {
+  const db = await openDatabase();
+  const entries = await requestToPromise<Array<{ key: string; value: unknown }>>(
+    db.transaction(STORES.preferences).objectStore(STORES.preferences).getAll()
+  );
+  return Object.fromEntries(entries.map(({ key, value }) => [key, value]));
+}
+
 export async function exportBackup(): Promise<string> {
-  const [profiles, drinks, meals, customDrinks, favoriteDrinkIds, language, currencyCode, disclaimerAccepted, onboardingCompleted, themeVariant, unlockedThemes] = await Promise.all([
+  const [profiles, drinks, meals, customDrinks, preferences] = await Promise.all([
     getProfiles(),
     getDrinks(),
     getMeals(),
     getCustomDrinks(),
-    getPreference<string[]>("favoriteDrinkIds", []),
-    getPreference<string>("language", "it"),
-    getPreference<string>("currencyCode", "EUR"),
-    getPreference<boolean>("disclaimerAccepted", false),
-    getPreference<boolean>("onboardingCompleted", false),
-    getPreference<string>("themeVariant", "classic"),
-    getPreference<string[]>("unlockedThemes", [])
+    getAllPreferences()
   ]);
-  return JSON.stringify({ version: DB_VERSION, exportedAt: new Date().toISOString(), profiles, drinks, meals, customDrinks, favoriteDrinkIds, preferences: { language, currencyCode, disclaimerAccepted, onboardingCompleted, themeVariant, unlockedThemes } }, null, 2);
+  return JSON.stringify({
+    version: DB_VERSION,
+    exportedAt: new Date().toISOString(),
+    profiles,
+    drinks,
+    meals,
+    customDrinks,
+    favoriteDrinkIds: preferences.favoriteDrinkIds ?? [],
+    preferences
+  }, null, 2);
 }
 
 export async function importBackup(raw: string): Promise<void> {

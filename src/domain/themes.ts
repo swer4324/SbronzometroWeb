@@ -2,7 +2,7 @@ import type { DrinkEntry } from "./models";
 
 export type ThemeVariant =
   | "classic" | "mint" | "spritz" | "night" | "blackout" | "dawn" | "margarita" | "blue_lagoon"
-  | "beer_bottle" | "vodka" | "tomorrow_aftermath" | "closed_bar" | "broken_heart";
+  | "camping_beach" | "beer_bottle" | "vodka" | "tomorrow_aftermath" | "closed_bar" | "broken_heart";
 
 export const standardThemes: { id: ThemeVariant; name: string; swatch: string }[] = [
   { id: "classic", name: "Dry Martini", swatch: "#007a63" },
@@ -12,7 +12,8 @@ export const standardThemes: { id: ThemeVariant; name: string; swatch: string }[
   { id: "blackout", name: "Black Russian", swatch: "#050507" },
   { id: "dawn", name: "Moscow Mule", swatch: "#d35400" },
   { id: "margarita", name: "Margarita", swatch: "#81c784" },
-  { id: "blue_lagoon", name: "Blue Lagoon", swatch: "#4dd0e1" }
+  { id: "blue_lagoon", name: "Blue Lagoon", swatch: "#4dd0e1" },
+  { id: "camping_beach", name: "Camping Beach", swatch: "#23b7ce" }
 ];
 
 export const secretThemes: { id: ThemeVariant; name: string; hint: string; icon: string }[] = [

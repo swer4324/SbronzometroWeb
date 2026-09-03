@@ -1,0 +1,80 @@
+import type { Language } from "./i18n";
+
+const text = {
+  evening: ["La situazione di stasera", "Tonight's situation", "La situación de esta noche", "La situation de ce soir", "Die Lage heute Abend"],
+  logDrink: ["Segna drink", "Log drink", "Registrar bebida", "Noter une boisson", "Getränk eintragen"],
+  logMeal: ["Segna pasto", "Log meal", "Registrar comida", "Noter un repas", "Mahlzeit eintragen"],
+  legalNote: ["Stima teorica, nessun valore legale.", "Theoretical estimate, no legal value.", "Estimación teórica, sin valor legal.", "Estimation théorique, sans valeur légale.", "Theoretische Schätzung ohne rechtliche Gültigkeit."],
+  estimateCurrent: ["STIMA ATTUALE", "CURRENT ESTIMATE", "ESTIMACIÓN ACTUAL", "ESTIMATION ACTUELLE", "AKTUELLE SCHÄTZUNG"],
+  estimateDisclaimer: ["Stima teorica: non è una misurazione clinica né un via libera alla guida.", "Theoretical estimate: it is neither a clinical measurement nor clearance to drive.", "Estimación teórica: no es una medición clínica ni un permiso para conducir.", "Estimation théorique : ni mesure clinique, ni autorisation de conduire.", "Theoretische Schätzung: keine klinische Messung und keine Fahrerlaubnis."],
+  estimateUnavailable: ["Stima non disponibile", "Estimate unavailable", "Estimación no disponible", "Estimation indisponible", "Schätzung nicht verfügbar"],
+  checkProfile: ["Controlla i dati del profilo e riprova.", "Check the profile data and try again.", "Comprueba los datos del perfil e inténtalo de nuevo.", "Vérifiez le profil et réessayez.", "Profildaten prüfen und erneut versuchen."],
+  doNotDrive: ["NON GUIDARE", "DO NOT DRIVE", "NO CONDUZCAS", "NE CONDUISEZ PAS", "NICHT FAHREN"],
+  underReference: ["Sotto la soglia di riferimento", "Below the reference threshold", "Bajo el umbral de referencia", "Sous le seuil de référence", "Unter dem Referenzwert"],
+  underReferenceIn: ["Sotto la soglia di riferimento tra {time}", "Below the reference threshold in {time}", "Bajo el umbral de referencia en {time}", "Sous le seuil de référence dans {time}", "Unter dem Referenzwert in {time}"],
+  showDetails: ["Mostra dettagli ⌄", "Show details ⌄", "Mostrar detalles ⌄", "Afficher les détails ⌄", "Details anzeigen ⌄"],
+  hideDetails: ["Nascondi dettagli ⌃", "Hide details ⌃", "Ocultar detalles ⌃", "Masquer les détails ⌃", "Details ausblenden ⌃"],
+  peak: ["Picco", "Peak", "Pico", "Pic", "Höchstwert"],
+  trend: ["Trend", "Trend", "Tendencia", "Tendance", "Trend"],
+  rising: ["In salita", "Rising", "Subiendo", "En hausse", "Steigend"],
+  falling: ["In discesa", "Falling", "Bajando", "En baisse", "Fallend"],
+  peakNeedle: ["Lancetta rossa: picco stimato", "Red needle: estimated peak", "Aguja roja: pico estimado", "Aiguille rouge : pic estimé", "Roter Zeiger: geschätzter Höchstwert"],
+  timeline: ["Andamento stimato", "Estimated trend", "Evolución estimada", "Évolution estimée", "Geschätzter Verlauf"],
+  inEightHours: ["Tra 8 ore", "In 8 hours", "En 8 horas", "Dans 8 heures", "In 8 Stunden"],
+  uncertainty: ["La fascia mostra l'incertezza orientativa della stima.", "The band shows the estimate's approximate uncertainty.", "La franja muestra la incertidumbre aproximada de la estimación.", "La zone montre l'incertitude approximative de l'estimation.", "Das Band zeigt die ungefähre Unsicherheit der Schätzung."],
+  hydration: ["L'acqua aiuta a restare idratati, ma non abbassa il tasso alcolemico.", "Water helps you stay hydrated, but it does not lower BAC.", "El agua ayuda a mantenerte hidratado, pero no reduce la alcoholemia.", "L'eau aide à rester hydraté, mais ne réduit pas l'alcoolémie.", "Wasser hilft bei der Flüssigkeitszufuhr, senkt aber nicht den Alkoholspiegel."],
+  quickAdd: ["Aggiunta rapida", "Quick add", "Añadir rápido", "Ajout rapide", "Schnell hinzufügen"],
+  favoriteRecent: ["Preferiti e drink recenti", "Favorites and recent drinks", "Favoritos y bebidas recientes", "Favoris et boissons récentes", "Favoriten und letzte Getränke"],
+  safeReturn: ["Rientro sicuro", "Safe return", "Regreso seguro", "Retour sûr", "Sicherer Heimweg"],
+  safeActions: ["Azioni rapide quando serve una mano.", "Quick actions when you need a hand.", "Acciones rápidas cuando necesitas ayuda.", "Actions rapides si vous avez besoin d'aide.", "Schnelle Hilfe, wenn du sie brauchst."],
+  taxi: ["Taxi", "Taxi", "Taxi", "Taxi", "Taxi"],
+  call: ["Chiama", "Call", "Llamar", "Appeler", "Anrufen"],
+  location: ["Posizione", "Location", "Ubicación", "Position", "Standort"],
+  missingContact: ["Aggiungi prima un contatto fidato nelle Impostazioni.", "Add a trusted contact in Settings first.", "Añade primero un contacto de confianza en Ajustes.", "Ajoutez d'abord un contact de confiance dans les Réglages.", "Zuerst einen Vertrauenskontakt in den Einstellungen hinzufügen."],
+  installTitle: ["Aggiungila alla Home", "Add it to your Home Screen", "Añádela a la pantalla de inicio", "Ajoutez-la à l'écran d'accueil", "Zum Home-Bildschirm hinzufügen"],
+  installIos: ["Su iPhone: Condividi → Aggiungi alla schermata Home.", "On iPhone: Share → Add to Home Screen.", "En iPhone: Compartir → Añadir a inicio.", "Sur iPhone : Partager → Sur l'écran d'accueil.", "Auf dem iPhone: Teilen → Zum Home-Bildschirm."],
+  how: ["Come fare", "How", "Cómo", "Comment faire", "Anleitung"],
+  notNow: ["Non ora", "Not now", "Ahora no", "Pas maintenant", "Nicht jetzt"],
+  activeEvenings: ["Serate attive", "Active evenings", "Noches activas", "Soirées actives", "Aktive Abende"],
+  averagePerEvening: ["Media drink/serata", "Average drinks/evening", "Media de bebidas/noche", "Moyenne de boissons/soirée", "Getränke pro Abend"],
+  alcoholFreeDays: ["Giorni senza drink registrati", "Days without logged drinks", "Días sin bebidas registradas", "Jours sans boisson enregistrée", "Tage ohne erfasste Getränke"],
+  reminder: ["Promemoria serata", "Planned reminders", "Recordatorio de la noche", "Rappels planifiés", "Geplante Erinnerungen"],
+  readyAt: ["Pronto per le {time}", "Armed for {time}", "Listo para las {time}", "Prêt pour {time}", "Bereit für {time}"],
+  paused: ["In pausa", "Off duty", "En pausa", "En pause", "Pausiert"],
+  time: ["Orario", "Time", "Hora", "Heure", "Uhrzeit"],
+  webPushLimit: ["I promemoria funzionano mentre la PWA è aperta o attiva. A web app completamente chiusa serve un servizio Web Push.", "Reminders work while the PWA is open or active. A fully closed web app requires a Web Push service.", "Los recordatorios funcionan con la PWA abierta o activa. Con la app totalmente cerrada se necesita Web Push.", "Les rappels fonctionnent lorsque la PWA est ouverte ou active. Une app complètement fermée nécessite Web Push.", "Erinnerungen funktionieren bei geöffneter oder aktiver PWA. Im vollständig geschlossenen Zustand ist Web Push nötig."],
+  morning: ["Riepilogo mattutino", "Morning summary", "Resumen matutino", "Résumé du matin", "Morgenzusammenfassung"],
+  morningHelp: ["Un riepilogo non giudicante della serata precedente.", "A non-judgmental recap of the previous evening.", "Un resumen sin juicios de la noche anterior.", "Un récapitulatif sans jugement de la veille.", "Ein wertungsfreier Rückblick auf den Vorabend."],
+  trusted: ["Contatto fidato", "Trusted contact", "Contacto de confianza", "Contact de confiance", "Vertrauenskontakt"],
+  trustedHelp: ["Usato dal pulsante “Chiama” nella Home.", "Used by the Call button on Home.", "Se usa con el botón Llamar de Inicio.", "Utilisé par le bouton Appeler de l'accueil.", "Wird von der Anrufen-Schaltfläche verwendet."],
+  save: ["Salva", "Save", "Guardar", "Enregistrer", "Speichern"],
+  mode: ["Modalità", "Mode", "Modo", "Mode", "Modus"],
+  system: ["Segui il sistema", "Follow system", "Seguir sistema", "Suivre le système", "Systemeinstellung"],
+  light: ["Chiaro", "Light", "Claro", "Clair", "Hell"],
+  dark: ["Scuro", "Dark", "Oscuro", "Sombre", "Dunkel"],
+  secretCollection: ["Collezione segreta", "Secret collection", "Colección secreta", "Collection secrète", "Geheime Sammlung"],
+  secretSubtitle: ["{count} / {total} temi sbloccati · badge sobrietà e icone", "{count} / {total} themes unlocked · sobriety badges and icons", "{count} / {total} temas desbloqueados · insignias e iconos", "{count} / {total} thèmes débloqués · badges et icônes", "{count} / {total} Themes freigeschaltet · Abzeichen und Symbole"],
+  localSecrets: ["Sblocchi, badge e preferenze restano salvati soltanto su questo dispositivo.", "Unlocks, badges and preferences stay only on this device.", "Desbloqueos, insignias y preferencias solo se guardan en este dispositivo.", "Déblocages, badges et préférences restent uniquement sur cet appareil.", "Freischaltungen, Abzeichen und Einstellungen bleiben nur auf diesem Gerät."],
+  appIcon: ["Icona dell'app", "App icon", "Icono de la app", "Icône de l'app", "App-Symbol"],
+  appIconHelp: ["La scelta cambia l'identità visiva nella PWA; su iPhone l'icona Home si aggiorna reinstallando la PWA.", "This changes the PWA's visual identity; on iPhone, reinstall the PWA to refresh the Home Screen icon.", "Cambia la identidad visual de la PWA; en iPhone hay que reinstalarla para actualizar el icono.", "Cela change l'identité visuelle de la PWA ; sur iPhone, réinstallez-la pour actualiser l'icône.", "Dies ändert die PWA-Optik; auf dem iPhone muss sie für ein neues Symbol neu installiert werden."],
+  sobrietyBadges: ["Badge sobrietà", "Sobriety badges", "Insignias de sobriedad", "Badges de sobriété", "Nüchternheitsabzeichen"],
+  daysSinceDrink: ["Giorni dall'ultimo drink registrato: {days}", "Days since the last logged drink: {days}", "Días desde la última bebida registrada: {days}", "Jours depuis la dernière boisson enregistrée : {days}", "Tage seit dem letzten erfassten Getränk: {days}"],
+  undo: ["Annulla", "Undo", "Deshacer", "Annuler", "Rückgängig"],
+  drinkAdded: ["{name} aggiunto", "{name} added", "{name} añadida", "{name} ajoutée", "{name} hinzugefügt"],
+  drinkUndone: ["Ultimo drink annullato", "Last drink undone", "Última bebida anulada", "Dernière boisson annulée", "Letztes Getränk rückgängig gemacht"]
+  ,plannedBody: ["Serata in vista? Ricordati di segnare i drink e organizzare il rientro.", "Night out ahead? Remember to log your drinks and arrange how you will get home.", "¿Noche fuera? Recuerda registrar las bebidas y organizar la vuelta.", "Une soirée en vue ? Pensez à noter les boissons et à organiser le retour.", "Abend unterwegs? Getränke eintragen und den Heimweg planen."],
+  morningTitle: ["Ieri sera, in breve", "Last night, at a glance", "Anoche, de un vistazo", "Hier soir, en bref", "Gestern Abend auf einen Blick"],
+  morningBody: ["{count} drink · {spent} registrati · picco stimato {peak}", "{count} drinks · {spent} logged · estimated peak {peak}", "{count} bebidas · {spent} registrados · pico estimado {peak}", "{count} boissons · {spent} enregistrés · pic estimé {peak}", "{count} Getränke · {spent} erfasst · geschätzter Höchstwert {peak}"],
+  hydrationTitle: ["Ehi {name}! 💧", "Hey {name}! 💧", "¡Hola {name}! 💧", "Salut {name} ! 💧", "Hey {name}! 💧"],
+  notificationsOn: ["Notifiche attivate", "Notifications enabled", "Notificaciones activadas", "Notifications activées", "Benachrichtigungen aktiviert"],
+  notificationsDenied: ["Permesso notifiche non concesso", "Notification permission not granted", "Permiso de notificaciones no concedido", "Autorisation de notification refusée", "Benachrichtigungsberechtigung nicht erteilt"]
+} as const;
+
+export type V2TextKey = keyof typeof text;
+const languageIndex: Record<Language, number> = { it: 0, en: 1, es: 2, fr: 3, de: 4 };
+
+export function v2Text(language: Language, key: V2TextKey, values: Record<string, string | number> = {}): string {
+  let result: string = text[key][languageIndex[language]];
+  for (const [name, value] of Object.entries(values)) result = result.replaceAll(`{${name}}`, String(value));
+  return result;
+}

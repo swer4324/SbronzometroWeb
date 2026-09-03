@@ -17,9 +17,16 @@ describe("weekly reports", () => {
     expect(reports[0].weekStart.getDay()).toBe(1);
   });
 
-  it("calculates a consecutive-day streak", () => {
-    const reports = calculateWeeklyReports([profile], [drink("2026-06-08T20:00:00"), drink("2026-06-09T20:00:00"), drink("2026-06-10T20:00:00")], "EUR", new Date("2026-06-10"));
-    expect(reports[0].maxStreak).toBe(3);
-    expect(reports[0].currentStreak).toBe(3);
+  it("counts consecutive days without logged drinks like Android 2.0", () => {
+    const reports = calculateWeeklyReports([profile], [drink("2026-06-08T20:00:00"), drink("2026-06-09T20:00:00")], "EUR", new Date("2026-06-11T12:00:00"));
+    expect(reports[0].maxStreak).toBe(2);
+    expect(reports[0].currentStreak).toBe(2);
+    expect(reports[0].daysWithoutLoggedDrinks).toBe(2);
+  });
+
+  it("assigns drinks before 06:00 to the previous evening", () => {
+    const reports = calculateWeeklyReports([profile], [drink("2026-06-08T23:30:00"), drink("2026-06-09T02:00:00")], "EUR", new Date("2026-06-09T12:00:00"));
+    expect(reports[0].activeEvenings).toBe(1);
+    expect(reports[0].averageDrinksPerEvening).toBe(2);
   });
 });

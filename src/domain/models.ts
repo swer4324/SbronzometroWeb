@@ -1,5 +1,6 @@
 export type BiologicalSex = "MALE" | "FEMALE";
 export type StomachState = "EMPTY" | "LIGHT_MEAL" | "MEDIUM_MEAL" | "FULL_MEAL";
+export type DrinkingSpeed = "FAST" | "MEDIUM" | "SLOW" | "CHILL";
 export type DrinkType =
   | "BEER_DRAUGHT"
   | "BEER_BOTTLE"
@@ -28,6 +29,8 @@ export interface UserProfile {
   customEliminationRatePerHour: number | null;
   isActive: boolean;
   notificationsEnabled: boolean;
+  lastMealTimestamp?: number | null;
+  lastMealType?: StomachState | null;
 }
 
 export interface DrinkEntry {
@@ -38,6 +41,7 @@ export interface DrinkEntry {
   alcoholPercent: number;
   volumeMl: number;
   timestampMillis: number;
+  drinkingSpeed?: DrinkingSpeed | null;
   price: number | null;
   currencyCode: string | null;
   iconName: string | null;
@@ -73,6 +77,8 @@ export interface BacResult {
   estimatedMinutesUntilLegalLimit: number;
   suggestion: string;
   showHydrationReminder: boolean;
+  isError?: boolean;
+  errorMessage?: string | null;
 }
 
 export interface DrinkTemplate {

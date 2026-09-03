@@ -7,51 +7,58 @@ export interface WeeklyReport {
   weekStart: Date;
   weekEnd: Date;
   totalDrinks: number;
-  maxBac: number;
+  activeEvenings: number;
+  daysWithoutLoggedDrinks: number;
+  averageDrinksPerEvening: number;
+  averageSpendPerEvening: number;
+  maxBac: number | null;
   currentStreak: number;
   maxStreak: number;
   totalSpent: number;
   currencyCode: string;
 }
 
-const DAY = 86_400_000;
+export interface SobrietyStreaks { current: number; max: number }
 
-function startOfDay(date: Date): Date {
+export function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
-function startOfWeek(date: Date): Date {
+export function addCalendarDays(date: Date, days: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
+}
+
+/** Come Android: le ore fra mezzanotte e le 05:59 appartengono alla serata precedente. */
+export function eveningDate(timestampMillis: number): Date {
+  const value = new Date(timestampMillis);
+  const day = startOfDay(value);
+  return value.getHours() < 6 ? addCalendarDays(day, -1) : day;
+}
+
+export function startOfWeek(date: Date): Date {
   const day = startOfDay(date);
-  const offset = (day.getDay() + 6) % 7;
-  return new Date(day.getTime() - offset * DAY);
+  return addCalendarDays(day, -((day.getDay() + 6) % 7));
 }
 
 function dayKey(date: Date): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
-function maxConsecutiveDays(dates: Date[]): number {
-  const unique = [...new Map(dates.map((date) => [dayKey(date), startOfDay(date)])).values()].sort((a, b) => a.getTime() - b.getTime());
-  let best = 0;
+export function calculateSobrietyStreaks(periodStart: Date, periodEnd: Date, drinkingDates: Set<string>, today = new Date()): SobrietyStreaks {
+  const effectiveEnd = startOfDay(today).getTime() < startOfDay(periodEnd).getTime() ? startOfDay(today) : startOfDay(periodEnd);
+  if (effectiveEnd.getTime() < startOfDay(periodStart).getTime()) return { current: 0, max: 0 };
   let current = 0;
-  let previous: Date | null = null;
-  for (const date of unique) {
-    current = previous && date.getTime() - previous.getTime() === DAY ? current + 1 : 1;
-    best = Math.max(best, current);
-    previous = date;
+  let max = 0;
+  for (let date = startOfDay(periodStart); date.getTime() <= effectiveEnd.getTime(); date = addCalendarDays(date, 1)) {
+    if (drinkingDates.has(dayKey(date))) current = 0;
+    else { current += 1; max = Math.max(max, current); }
   }
-  return best;
+  return { current, max };
 }
 
-function currentStreak(dates: Date[], reference = new Date()): number {
-  const unique = [...new Map(dates.map((date) => [dayKey(date), startOfDay(date)])).values()].sort((a, b) => b.getTime() - a.getTime());
-  if (!unique.length || startOfDay(reference).getTime() - unique[0].getTime() > DAY) return 0;
-  let streak = 1;
-  for (let index = 1; index < unique.length; index += 1) {
-    if (unique[index - 1].getTime() - unique[index].getTime() !== DAY) break;
-    streak += 1;
-  }
-  return streak;
+export function completedEveningCount(drinks: DrinkEntry[], now = new Date()): number {
+  const current = eveningDate(now.getTime()).getTime();
+  return new Set(drinks.map((drink) => eveningDate(drink.timestampMillis).getTime()).filter((date) => date < current)).size;
 }
 
 export function calculateWeeklyReports(profiles: UserProfile[], drinks: DrinkEntry[], defaultCurrency: string, now = new Date()): WeeklyReport[] {
@@ -61,32 +68,39 @@ export function calculateWeeklyReports(profiles: UserProfile[], drinks: DrinkEnt
     const profileDrinks = drinks.filter((drink) => drink.userId === profile.id);
     const groups = new Map<number, DrinkEntry[]>();
     for (const drink of profileDrinks) {
-      const key = startOfWeek(new Date(drink.timestampMillis)).getTime();
+      const key = startOfWeek(eveningDate(drink.timestampMillis)).getTime();
       groups.set(key, [...(groups.get(key) ?? []), drink]);
     }
-    const allDates = profileDrinks.map((drink) => new Date(drink.timestampMillis));
     for (const [weekStartMillis, weekDrinks] of groups) {
       const weekStart = new Date(weekStartMillis);
-      const weekEnd = new Date(weekStartMillis + 6 * DAY);
-      const byDay = new Map<string, DrinkEntry[]>();
+      const weekEnd = addCalendarDays(weekStart, 6);
+      const effectiveEnd = startOfDay(now).getTime() < weekEnd.getTime() ? startOfDay(now) : weekEnd;
+      const eveningDates = new Set(weekDrinks.map((drink) => dayKey(eveningDate(drink.timestampMillis))));
+      const activeEvenings = [...eveningDates].filter((key) => {
+        const match = weekDrinks.find((drink) => dayKey(eveningDate(drink.timestampMillis)) === key);
+        return match ? eveningDate(match.timestampMillis).getTime() <= effectiveEnd.getTime() : false;
+      }).length;
+      const observedDays = effectiveEnd.getTime() < weekStart.getTime() ? 0 : Math.round((Date.UTC(effectiveEnd.getFullYear(), effectiveEnd.getMonth(), effectiveEnd.getDate()) - Date.UTC(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate())) / 86_400_000) + 1;
+      const sobriety = calculateSobrietyStreaks(weekStart, weekEnd, eveningDates, now);
+      const byEvening = new Map<string, DrinkEntry[]>();
       for (const drink of weekDrinks) {
-        const key = dayKey(new Date(drink.timestampMillis));
-        byDay.set(key, [...(byDay.get(key) ?? []), drink]);
+        const key = dayKey(eveningDate(drink.timestampMillis));
+        byEvening.set(key, [...(byEvening.get(key) ?? []), drink]);
       }
-      const maxBac = Math.max(0, ...[...byDay.values()].map((dailyDrinks) => {
+      const peaks = [...byEvening.values()].map((dailyDrinks) => {
         const events: BacEvent[] = dailyDrinks.map((drink) => ({ kind: "drink", timestamp: drink.timestampMillis, drink }));
-        return calculateCurrentBac(profile, events, Math.max(...dailyDrinks.map((drink) => drink.timestampMillis)) + 4 * 60 * 60 * 1000).peakBac;
-      }));
+        const result = calculateCurrentBac(profile, events, Math.max(...dailyDrinks.map((drink) => drink.timestampMillis)) + 4 * 60 * 60 * 1000);
+        return result.isError ? null : result.peakBac;
+      }).filter((value): value is number => value != null);
+      const totalSpent = weekDrinks.reduce((sum, drink) => sum + (drink.price ?? 0), 0);
       reports.push({
-        profileId: profile.id,
-        profileName: profile.name,
-        weekStart,
-        weekEnd,
-        totalDrinks: weekDrinks.length,
-        maxBac,
-        currentStreak: currentStreak(allDates, now),
-        maxStreak: maxConsecutiveDays(weekDrinks.map((drink) => new Date(drink.timestampMillis))),
-        totalSpent: weekDrinks.reduce((sum, drink) => sum + (drink.price ?? 0), 0),
+        profileId: profile.id, profileName: profile.name, weekStart, weekEnd,
+        totalDrinks: weekDrinks.length, activeEvenings,
+        daysWithoutLoggedDrinks: Math.max(0, observedDays - activeEvenings),
+        averageDrinksPerEvening: weekDrinks.length / Math.max(1, activeEvenings),
+        averageSpendPerEvening: totalSpent / Math.max(1, activeEvenings),
+        maxBac: peaks.length ? Math.max(...peaks) : null,
+        currentStreak: sobriety.current, maxStreak: sobriety.max, totalSpent,
         currencyCode: weekDrinks.find((drink) => drink.currencyCode)?.currencyCode ?? defaultCurrency
       });
     }

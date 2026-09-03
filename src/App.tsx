@@ -19,12 +19,16 @@ import {
   setActiveProfile
 } from "./data/db";
 import { calculateCurrentBac } from "./domain/bacCalculator";
-import { calculateWeeklyReports } from "./domain/weeklyReports";
+import { calculateWeeklyReports, completedEveningCount } from "./domain/weeklyReports";
+import { buildBacProjection, buildQuickDrinkOptions, type BacProjectionPoint, type QuickDrinkOption } from "./domain/home";
+import { hydrationReminderDelayMs, previousEveningDrinks, requestNotificationPermission, shouldFireMorningSummary, shouldFirePlannedReminder, showLocalNotification } from "./domain/notifications";
 import { evaluateThemeUnlocks, isThemeVariant, secretThemes, standardThemes, type ThemeVariant } from "./domain/themes";
 import { bacLevelLabel, bacSuggestion, disclaimerTranslations, drinkTemplateName, languageNames, localeFor, mealLabel, onboardingTranslations, secretThemeTranslation, translate, type Language } from "./domain/i18n";
+import { v2Text } from "./domain/v2i18n";
 import {
   drinkTemplates,
   type BacEvent,
+  type BacLevel,
   type CustomDrink,
   type DrinkEntry,
   type MealEntry,
@@ -32,10 +36,8 @@ import {
   type UserProfile
 } from "./domain/models";
 
-type View = "home" | "history" | "reports" | "profiles" | "settings";
+type View = "home" | "history" | "reports" | "profiles" | "settings" | "secrets";
 
-const WEB_THEME_LOCKED = true;
-const SAFE_THEME: "light" | "dark" = "dark";
 const SAFE_THEME_VARIANT: ThemeVariant = "classic";
 
 const emptyProfile: UserProfile = {
@@ -69,6 +71,10 @@ function emptyDrinkDraft(userId = 0): DrinkEntry {
   };
 }
 
+function launcherIconPath(icon: string): string {
+  return `./app-icon-${["red", "black", "white"].includes(icon) ? icon : "default"}.png`;
+}
+
 export function App() {
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [drinks, setDrinks] = useState<DrinkEntry[]>([]);
@@ -84,7 +90,7 @@ export function App() {
   const [themeVariant, setThemeVariant] = useState<ThemeVariant>(SAFE_THEME_VARIANT);
   const [unlockedThemes, setUnlockedThemes] = useState<ThemeVariant[]>([]);
   const [view, setView] = useState<View>("home");
-  const [expandedProfiles, setExpandedProfiles] = useState<number[]>([]);
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [profileDraft, setProfileDraft] = useState<UserProfile>(emptyProfile);
   const [showProfileForm, setShowProfileForm] = useState(false);
   const [showDrinkForm, setShowDrinkForm] = useState(false);
@@ -94,10 +100,21 @@ export function App() {
   const [mealType, setMealType] = useState<StomachState>("LIGHT_MEAL");
   const [mealDraft, setMealDraft] = useState<MealEntry>({ userId: 0, mealType: "LIGHT_MEAL", timestampMillis: Date.now() });
   const [saveAsCustom, setSaveAsCustom] = useState(false);
-  const [theme, setTheme] = useState<"light" | "dark">(SAFE_THEME);
+  const [theme, setTheme] = useState<"system" | "light" | "dark">("system");
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderTime, setReminderTime] = useState("19:00");
+  const [reminderDays, setReminderDays] = useState<string[]>([]);
+  const [morningSummaryEnabled, setMorningSummaryEnabled] = useState(false);
+  const [trustedPhoneNumber, setTrustedPhoneNumber] = useState("");
+  const [launcherIcon, setLauncherIcon] = useState("default");
+  const [installHintDismissed, setInstallHintDismissed] = useState(false);
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | "unsupported">("unsupported");
+  const [undoDrink, setUndoDrink] = useState<DrinkEntry | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [, setClock] = useState(Date.now());
+  const previousBacLevelRef = useRef<{ profileId: number; level: BacLevel } | null>(null);
   const validSecretThemeIds = secretThemes.map((variant) => variant.id);
 
   const activeProfile = profiles.find((profile) => profile.isActive) ?? profiles[0];
@@ -108,24 +125,23 @@ export function App() {
       ]
     : [];
   const result = activeProfile ? calculateCurrentBac(activeProfile, activeEvents) : null;
-  const profileStatuses = profiles.map((profile) => {
-    const profileEvents: BacEvent[] = [
-      ...drinks.filter((drink) => drink.userId === profile.id).map((drink) => ({ kind: "drink" as const, timestamp: drink.timestampMillis, drink })),
-      ...meals.filter((meal) => meal.userId === profile.id).map((meal) => ({ kind: "meal" as const, timestamp: meal.timestampMillis, meal }))
-    ];
-    return { profile, result: calculateCurrentBac(profile, profileEvents) };
-  }).sort((a, b) => Number(b.profile.isActive) - Number(a.profile.isActive));
+  const projection = activeProfile && result && !result.isError ? buildBacProjection(activeProfile, activeEvents) : [];
 
   async function refresh() {
     try {
       setError(null);
       const storedProfiles = await getProfiles();
       const existingUser = storedProfiles.length > 0;
-      const [storedDrinks, storedMeals, storedCustomDrinks, storedFavorites, storedLanguage, storedCurrency, storedDisclaimer, storedOnboarding, storedThemeVariant, storedUnlocks] = await Promise.all([
+      const [storedDrinks, storedMeals, storedCustomDrinks, storedFavorites, storedLanguage, storedCurrency, storedDisclaimer, storedOnboarding, storedThemeVariant, storedUnlocks, storedTheme, storedReminderEnabled, storedReminderTime, storedReminderDays, storedMorningSummary, storedTrustedPhone, storedLauncherIcon, storedInstallHintDismissed] = await Promise.all([
         getDrinks(), getMeals(), getCustomDrinks(), getPreference<string[]>("favoriteDrinkIds", []),
         getPreference<Language>("language", "it"), getPreference<string>("currencyCode", "EUR"),
         getPreference<boolean>("disclaimerAccepted", existingUser), getPreference<boolean>("onboardingCompleted", existingUser),
-        getPreference<ThemeVariant>("themeVariant", "classic"), getPreference<ThemeVariant[]>("unlockedThemes", [])
+        getPreference<ThemeVariant>("themeVariant", "classic"), getPreference<ThemeVariant[]>("unlockedThemes", []),
+        getPreference<"system" | "light" | "dark">("theme", "system"),
+        getPreference<boolean>("reminderEnabled", false), getPreference<string>("reminderTime", "19:00"),
+        getPreference<string[]>("reminderDays", []), getPreference<boolean>("morningSummaryEnabled", false),
+        getPreference<string>("trustedPhoneNumber", ""), getPreference<string>("launcherIcon", "default"),
+        getPreference<boolean>("installHintDismissed", false)
       ]);
       setProfiles(storedProfiles.sort((a, b) => a.name.localeCompare(b.name)));
       setDrinks(storedDrinks.sort((a, b) => b.timestampMillis - a.timestampMillis));
@@ -136,13 +152,16 @@ export function App() {
       setCurrencyCode(storedCurrency);
       setDisclaimerAccepted(storedDisclaimer);
       setOnboardingCompleted(storedOnboarding);
-      const nextThemeVariant = WEB_THEME_LOCKED
-        ? SAFE_THEME_VARIANT
-        : (isThemeVariant(storedThemeVariant) ? storedThemeVariant : SAFE_THEME_VARIANT);
-      setThemeVariant(nextThemeVariant);
-      if (WEB_THEME_LOCKED && storedThemeVariant !== SAFE_THEME_VARIANT) {
-        await setPreference("themeVariant", SAFE_THEME_VARIANT);
-      }
+      setThemeVariant(isThemeVariant(storedThemeVariant) ? storedThemeVariant : SAFE_THEME_VARIANT);
+      setTheme(storedTheme);
+      setReminderEnabled(storedReminderEnabled);
+      setReminderTime(storedReminderTime);
+      setReminderDays(storedReminderDays);
+      setMorningSummaryEnabled(storedMorningSummary);
+      setTrustedPhoneNumber(storedTrustedPhone);
+      setLauncherIcon(storedLauncherIcon);
+      setInstallHintDismissed(storedInstallHintDismissed);
+      setNotificationPermission("Notification" in window ? Notification.permission : "unsupported");
       const safeStoredUnlocks = storedUnlocks.filter(isThemeVariant).filter((variant) => validSecretThemeIds.includes(variant));
       const evaluatedUnlocks = [...new Set([...safeStoredUnlocks, ...evaluateThemeUnlocks(storedDrinks)])];
       setUnlockedThemes(evaluatedUnlocks);
@@ -162,15 +181,17 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (!WEB_THEME_LOCKED) return;
-    if (theme !== SAFE_THEME) setTheme(SAFE_THEME);
-    if (themeVariant !== SAFE_THEME_VARIANT) setThemeVariant(SAFE_THEME_VARIANT);
-  }, [theme, themeVariant]);
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    document.documentElement.dataset.variant = themeVariant;
-    localStorage.setItem("theme", theme);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const apply = () => {
+      const forcedDark = ["blackout", "beer_bottle", "vodka", "closed_bar", "broken_heart"].includes(themeVariant);
+      const forcedLight = ["tomorrow_aftermath", "camping_beach"].includes(themeVariant);
+      const effective = forcedDark ? "dark" : forcedLight ? "light" : theme === "system" ? (media.matches ? "dark" : "light") : theme;
+      document.documentElement.dataset.theme = effective;
+      document.documentElement.dataset.variant = themeVariant;
+    };
+    apply();
+    media.addEventListener("change", apply);
+    return () => media.removeEventListener("change", apply);
   }, [theme, themeVariant]);
 
   useEffect(() => {
@@ -178,16 +199,62 @@ export function App() {
   }, [language]);
 
   useEffect(() => {
-    if (!activeProfile?.id) return;
-    setExpandedProfiles((current) => (current.includes(activeProfile.id!) ? current : [activeProfile.id!, ...current]));
-  }, [activeProfile?.id]);
+    const iconPath = launcherIconPath(launcherIcon);
+    document.querySelectorAll<HTMLLinkElement>('link[rel="icon"], link[rel="apple-touch-icon"]').forEach((link) => { link.href = iconPath; });
+    const manifest = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+    if (manifest) manifest.href = launcherIcon === "default" ? "./manifest.webmanifest" : `./manifest-${launcherIcon}.webmanifest`;
+  }, [launcherIcon]);
+
+  useEffect(() => {
+    if (notificationPermission !== "granted") return;
+    const check = async () => {
+      const now = new Date();
+      const [lastReminder, lastMorning, hydrationDue] = await Promise.all([
+        getPreference<string | null>("lastReminderNotification", null),
+        getPreference<string | null>("lastMorningSummary", null),
+        activeProfile?.id ? getPreference<number | null>(`hydrationDue:${activeProfile.id}`, null) : Promise.resolve(null)
+      ]);
+      const reminderKey = shouldFirePlannedReminder(now, { enabled: reminderEnabled, time: reminderTime, days: reminderDays, morningSummaryEnabled }, lastReminder);
+      if (reminderKey) {
+        await showLocalNotification("Sbronzometro 🍺", v2Text(language, "plannedBody"), reminderKey);
+        await setPreference("lastReminderNotification", reminderKey);
+      }
+      if (activeProfile?.id && hydrationDue && hydrationDue <= now.getTime()) {
+        await showLocalNotification(v2Text(language, "hydrationTitle", { name: activeProfile.name }), v2Text(language, "hydration"), `hydration-${activeProfile.id}`);
+        await setPreference(`hydrationDue:${activeProfile.id}`, null);
+      }
+      const morningKey = shouldFireMorningSummary(now, morningSummaryEnabled, lastMorning);
+      if (morningKey) {
+        const previous = previousEveningDrinks(drinks.filter((drink) => drink.userId === activeProfile?.id), now);
+        if (previous.length) {
+          const spent = previous.reduce((sum, drink) => sum + (drink.price ?? 0), 0);
+          const from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 18).getTime();
+          const to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 6).getTime();
+          const summaryEvents: BacEvent[] = [
+            ...previous.map((drink) => ({ kind: "drink" as const, timestamp: drink.timestampMillis, drink })),
+            ...meals.filter((meal) => meal.userId === activeProfile?.id && meal.timestampMillis >= from && meal.timestampMillis < to).map((meal) => ({ kind: "meal" as const, timestamp: meal.timestampMillis, meal }))
+          ];
+          const summaryResult = activeProfile ? calculateCurrentBac(activeProfile, summaryEvents, Math.max(...previous.map((drink) => drink.timestampMillis)) + 4 * 60 * 60_000) : null;
+          const peak = summaryResult && !summaryResult.isError ? `${summaryResult.peakBac.toFixed(2)} g/L` : v2Text(language, "estimateUnavailable");
+          await showLocalNotification(v2Text(language, "morningTitle"), v2Text(language, "morningBody", { count: previous.length, spent: new Intl.NumberFormat(localeFor(language), { style: "currency", currency: currencyCode }).format(spent), peak }), morningKey);
+        }
+        await setPreference("lastMorningSummary", morningKey);
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 30_000);
+    return () => window.clearInterval(timer);
+  }, [notificationPermission, reminderEnabled, reminderTime, reminderDays, morningSummaryEnabled, drinks, meals, activeProfile?.id, activeProfile?.name, language, currencyCode]);
+
+  useEffect(() => {
+    if (!activeProfile?.id || !result || result.isError) return;
+    const previous = previousBacLevelRef.current;
+    previousBacLevelRef.current = { profileId: activeProfile.id, level: result.bacLevel };
+    if (!previous || previous.profileId !== activeProfile.id || previous.level === result.bacLevel || notificationPermission !== "granted" || !activeProfile.notificationsEnabled) return;
+    void showLocalNotification(`${activeProfile.name}: ${bacLevelLabel(language, result.bacLevel)}`, bacSuggestion(language, result.bacLevel), `bac-${activeProfile.id}-${result.bacLevel}`);
+  }, [activeProfile?.id, activeProfile?.name, activeProfile?.notificationsEnabled, result?.bacLevel, result?.isError, notificationPermission, language]);
 
   async function selectThemeVariant(variant: ThemeVariant) {
-    if (WEB_THEME_LOCKED) {
-      setThemeVariant(SAFE_THEME_VARIANT);
-      setError("Tema bloccato sulla versione web per evitare crash.");
-      return;
-    }
     if (!isThemeVariant(variant)) {
       setError("Tema non valido.");
       return;
@@ -240,7 +307,15 @@ export function App() {
   async function submitDrink(event: React.FormEvent) {
     event.preventDefault();
     if (!activeProfile?.id) return;
-    await addDrink({ ...drinkDraft, userId: drinkDraft.id ? drinkDraft.userId : activeProfile.id });
+    const normalizedTimestamp = !drinkDraft.id && drinkDraft.timestampMillis > Date.now() ? drinkDraft.timestampMillis - 86_400_000 : drinkDraft.timestampMillis;
+    const savedDrink = { ...drinkDraft, timestampMillis: normalizedTimestamp, userId: drinkDraft.id ? drinkDraft.userId : activeProfile.id };
+    const id = await addDrink(savedDrink);
+    if (!drinkDraft.id) {
+      setUndoDrink({ ...savedDrink, id });
+      setToast(v2Text(language, "drinkAdded", { name: savedDrink.name }));
+      const nextCount = drinks.filter((drink) => drink.userId === activeProfile.id).length + 1;
+      if (nextCount % 2 === 0) await setPreference(`hydrationDue:${activeProfile.id}`, Date.now() + hydrationReminderDelayMs());
+    }
     if (saveAsCustom) {
       await saveCustomDrink({
         name: drinkDraft.name,
@@ -296,6 +371,59 @@ export function App() {
     await setPreference("favoriteDrinkIds", updated);
   }
 
+  async function quickAddDrink(option: QuickDrinkOption) {
+    if (!activeProfile?.id) return;
+    const drink: DrinkEntry = {
+      userId: activeProfile.id,
+      name: option.name,
+      drinkType: option.drinkType,
+      alcoholPercent: option.alcoholPercent,
+      volumeMl: option.volumeMl,
+      timestampMillis: Date.now(),
+      drinkingSpeed: null,
+      price: null,
+      currencyCode,
+      iconName: option.icon
+    };
+    const id = await addDrink(drink);
+    setUndoDrink({ ...drink, id });
+    setToast(v2Text(language, "drinkAdded", { name: option.name }));
+    const nextCount = drinks.filter((item) => item.userId === activeProfile.id).length + 1;
+    if (nextCount % 2 === 0) await setPreference(`hydrationDue:${activeProfile.id}`, Date.now() + hydrationReminderDelayMs());
+    await refresh();
+  }
+
+  async function undoLastDrink() {
+    if (!undoDrink?.id) return;
+    await deleteEvent("drinkEntries", undoDrink.id);
+    setUndoDrink(null);
+    setToast(v2Text(language, "drinkUndone"));
+    await refresh();
+  }
+
+  async function enableNotifications() {
+    const permission = await requestNotificationPermission();
+    setNotificationPermission(permission);
+    setToast(v2Text(language, permission === "granted" ? "notificationsOn" : "notificationsDenied"));
+  }
+
+  async function shareLiveLocation() {
+    const position = await new Promise<GeolocationPosition>((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 10_000 }));
+    const url = `https://maps.google.com/?q=${position.coords.latitude},${position.coords.longitude}`;
+    const data = { title: "La mia posizione", text: "Questa è la mia posizione attuale:", url };
+    if (navigator.share) await navigator.share(data);
+    else {
+      await navigator.clipboard.writeText(`${data.text} ${url}`);
+      setToast("Link della posizione copiato");
+    }
+  }
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
   const customTemplates = customDrinks.map((drink) => ({
     id: `custom-${drink.id}`,
     name: drink.name,
@@ -310,6 +438,12 @@ export function App() {
     const favoriteDifference = Number(favoriteDrinkIds.includes(b.id)) - Number(favoriteDrinkIds.includes(a.id));
     return favoriteDifference || a.name.localeCompare(b.name);
   });
+  const quickDrinkOptions = buildQuickDrinkOptions(
+    translatedDrinkTemplates,
+    customDrinks,
+    activeProfile?.id ? drinks.filter((drink) => drink.userId === activeProfile.id) : [],
+    favoriteDrinkIds
+  );
   const weeklyReports = calculateWeeklyReports(profiles, drinks, currencyCode);
   const locale = localeFor(language);
   const t = (key: Parameters<typeof translate>[1], values?: Record<string, string | number>) => translate(language, key, values);
@@ -320,20 +454,19 @@ export function App() {
 
   return (
     <div className={`app-shell variant-${themeVariant}`}>
-      {["beer_bottle", "vodka", "tomorrow_aftermath", "closed_bar", "broken_heart"].includes(themeVariant) && <div className="immersive-background" aria-hidden="true"><span /><span /><span /></div>}
+      {["beer_bottle", "vodka", "tomorrow_aftermath", "closed_bar", "broken_heart", "camping_beach"].includes(themeVariant) && <div className="immersive-background" aria-hidden="true"><span /><span /><span /></div>}
       <header className="topbar">
         <button className="brand" onClick={() => setView("home")}>
-          <span className="brand-mark">S</span>
+          <span className={`brand-mark icon-${launcherIcon}`}>S</span>
           <span><strong>Sbronzometro</strong><small>{t("offline")}</small></span>
         </button>
-        {!WEB_THEME_LOCKED && (
-          <button className="icon-button" onClick={() => setTheme(theme === "dark" ? "light" : "dark")} aria-label={t("changeTheme")}>
-            {theme === "dark" ? "☀" : "☾"}
-          </button>
-        )}
+        <button className="icon-button" onClick={async () => { const next = theme === "system" ? "light" : theme === "light" ? "dark" : "system"; setTheme(next); await setPreference("theme", next); }} aria-label={t("changeTheme")}>
+          {theme === "system" ? "◐" : theme === "dark" ? "☀" : "☾"}
+        </button>
       </header>
 
       {error && <div className="error-banner" role="alert">{error}</div>}
+      {toast && <div className="toast" role="status"><span>{toast}</span>{undoDrink && <button onClick={() => void undoLastDrink()}>{v2Text(language, "undo")}</button>}</div>}
 
       <main className="main-content">
         <PlayStoreBanner language={language} />
@@ -344,34 +477,21 @@ export function App() {
             ) : (
               <>
                 <section className="home-stack">
-                  <div className="section-title compact-title home-section-title">
-                    <div>
-                      <h2>La situazione di stasera</h2>
-                    </div>
-                  </div>
-                  <div className="status-list">
-                    {profileStatuses.map(({ profile, result: profileResult }) => (
-                      <ProfileStatusCard
-                        key={profile.id}
-                        language={language}
-                        profile={profile}
-                        result={profileResult}
-                        expanded={expandedProfiles.includes(profile.id!)}
-                        onToggle={() => setExpandedProfiles((current) => current.includes(profile.id!) ? current.filter((id) => id !== profile.id) : [...current, profile.id!])}
-                        onActivate={async () => { await setActiveProfile(profile.id!); await refresh(); }}
-                      />
-                    ))}
-                  </div>
+                  <div className="home-heading"><h1>{v2Text(language, "evening")}</h1>{profiles.length > 1 ? <label className="profile-switch"><span className="sr-only">{t("activeProfile")}</span><select value={activeProfile.id} onChange={async (event) => { await setActiveProfile(Number(event.target.value)); setDetailsExpanded(false); await refresh(); }}>{profiles.map((profile) => <option key={profile.id} value={profile.id}>{profile.name}</option>)}</select></label> : <strong>{activeProfile.name}</strong>}</div>
+                  <BacStatusCard language={language} profile={activeProfile} result={result} expanded={detailsExpanded} onToggle={() => setDetailsExpanded((value) => !value)} projection={projection} />
+                  <SafeReturnCard language={language} trustedPhoneNumber={trustedPhoneNumber} onShare={() => void shareLiveLocation().catch(() => setToast(v2Text(language, "location")))} />
+                  {!installHintDismissed && completedEveningCount(drinks.filter((drink) => drink.userId === activeProfile.id)) >= 2 && <InstallHint language={language} onDismiss={async () => { setInstallHintDismissed(true); await setPreference("installHintDismissed", true); }} />}
                 </section>
 
                 <section className="quick-panel">
+                  <QuickDrinkRow language={language} options={quickDrinkOptions} onAdd={(option) => void quickAddDrink(option)} />
                   <div className="quick-actions">
-                    <button className="primary-action" onClick={openNewDrink}><span>🍹</span>Segna drink</button>
-                    <button className="secondary-action" onClick={openNewMeal}><span>🍽</span>Segna pasto</button>
+                    <button className="primary-action" onClick={openNewDrink}><span>🍹</span>{v2Text(language, "logDrink")}</button>
+                    <button className="secondary-action" onClick={openNewMeal}><span>🍽</span>{v2Text(language, "logMeal")}</button>
                   </div>
                 </section>
 
-                <div className="home-disclaimer"><span>ℹ</span>Stima teorica, nessun valore legale.</div>
+                <div className="home-disclaimer"><span>ℹ</span>{v2Text(language, "legalNote")}</div>
               </>
             )}
           </>
@@ -434,7 +554,7 @@ export function App() {
               {weeklyReports.length === 0 && <div className="empty-list">{t("cleanWeek")}</div>}
               {weeklyReports.map((report) => <article className="report-card" key={`${report.profileId}-${report.weekStart.getTime()}`}>
                 <div className="report-heading"><div><span>{report.profileName}</span><strong>{report.weekStart.toLocaleDateString(locale, { day: "2-digit", month: "short" })} – {report.weekEnd.toLocaleDateString(locale, { day: "2-digit", month: "short" })}</strong></div><b>{report.totalDrinks} {t("drinks")}</b></div>
-                <div className="report-metrics"><Metric label={t("maxPeak")} value={`${report.maxBac.toFixed(2)} g/L`} /><Metric label={t("totalSpent")} value={new Intl.NumberFormat(locale, { style: "currency", currency: report.currencyCode }).format(report.totalSpent)} /><Metric label={t("currentStreak")} value={formatDays(report.currentStreak, language)} /><Metric label={t("weeklyRecord")} value={formatDays(report.maxStreak, language)} /></div>
+                <div className="report-metrics"><Metric label={v2Text(language, "activeEvenings")} value={String(report.activeEvenings)} /><Metric label={v2Text(language, "averagePerEvening")} value={report.averageDrinksPerEvening.toFixed(1)} /><Metric label={v2Text(language, "alcoholFreeDays")} value={String(report.daysWithoutLoggedDrinks)} /><Metric label={t("totalSpent")} value={new Intl.NumberFormat(locale, { style: "currency", currency: report.currencyCode }).format(report.totalSpent)} /></div>
               </article>)}
             </div>
           </section>
@@ -443,33 +563,19 @@ export function App() {
         {view === "settings" && (
           <section>
             <div className="section-title"><div><span className="eyebrow">{t("dataFirstAid")}</span><h1>{t("settings")}</h1></div></div>
-            {WEB_THEME_LOCKED ? (
-              <article className="settings-card warning-card">
-                <h2>{t("colorStyle")}</h2>
-                <p>Su questa versione web i temi sono stati disattivati per evitare blocchi nel menu impostazioni. Se avevi un tema salvato, viene riportato automaticamente a un preset stabile.</p>
-              </article>
-            ) : (
-              <>
-                <article className="settings-card">
-                  <h2>{t("colorStyle")}</h2>
-                  <p>{t("colorStyleHelp")}</p>
-                  <div className="theme-grid">
-                    {standardThemes.map((variant) => <button type="button" className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span style={{ background: variant.swatch }} /><strong>{variant.name}</strong></button>)}
-                  </div>
-                </article>
-                <article className="settings-card">
-                  <h2>{t("secretThemes")}</h2>
-                  <p>{t("unlockedCount", { count: unlockedThemes.length, total: secretThemes.length })}</p>
-                  <div className="secret-theme-list">
-                    {secretThemes.map((variant) => {
-                      const unlocked = unlockedThemes.includes(variant.id);
-                      const [name, hint] = secretThemeTranslation(language, variant.id, variant.name, variant.hint);
-                      return <button type="button" disabled={!unlocked} className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span>{unlocked ? variant.icon : "⌾"}</span><div><strong>{name}</strong><small>{unlocked ? t("unlocked") : hint}</small></div></button>;
-                    })}
-                  </div>
-                </article>
-              </>
-            )}
+            <article className="settings-card reminder-card">
+              <div className="settings-heading"><div><span className="settings-icon">🔔</span><div><h2>{v2Text(language, "reminder")}</h2><p>{reminderEnabled ? v2Text(language, "readyAt", { time: reminderTime }) : v2Text(language, "paused")}</p></div></div><label className="switch"><input type="checkbox" checked={reminderEnabled} onChange={async (event) => { const value = event.target.checked; if (value && notificationPermission !== "granted") await enableNotifications(); setReminderEnabled(value); await setPreference("reminderEnabled", value); }} /><span /></label></div>
+              {reminderEnabled && <><label className="standalone-label">{v2Text(language, "time")}<input type="time" value={reminderTime} onChange={async (event) => { setReminderTime(event.target.value); await setPreference("reminderTime", event.target.value); }} /></label><div className="day-picker">{[["2","L"],["3","M"],["4","M"],["5","G"],["6","V"],["7","S"],["1","D"]].map(([code,label]) => <button key={code} className={reminderDays.includes(code) ? "selected" : ""} onClick={async () => { const next = reminderDays.includes(code) ? reminderDays.filter((day) => day !== code) : [...reminderDays, code]; setReminderDays(next); await setPreference("reminderDays", next); }}>{label}</button>)}</div></>}
+              <p className="capability-note">{v2Text(language, "webPushLimit")}</p>
+            </article>
+            <article className="settings-card"><div className="settings-heading"><div><span className="settings-icon">☀️</span><div><h2>{v2Text(language, "morning")}</h2><p>{v2Text(language, "morningHelp")}</p></div></div><label className="switch"><input type="checkbox" checked={morningSummaryEnabled} onChange={async (event) => { const value = event.target.checked; if (value && notificationPermission !== "granted") await enableNotifications(); setMorningSummaryEnabled(value); await setPreference("morningSummaryEnabled", value); }} /><span /></label></div></article>
+            <article className="settings-card"><h2>{v2Text(language, "trusted")}</h2><p>{v2Text(language, "trustedHelp")}</p><div className="inline-save"><input type="tel" value={trustedPhoneNumber} placeholder="+39 333 1234567" onChange={(event) => setTrustedPhoneNumber(event.target.value)} /><button onClick={async () => { const value = trustedPhoneNumber.trim(); setTrustedPhoneNumber(value); await setPreference("trustedPhoneNumber", value); setToast(v2Text(language, "save")); }}>{v2Text(language, "save")}</button></div></article>
+            <article className="settings-card">
+              <h2>{t("colorStyle")}</h2><p>{t("colorStyleHelp")}</p>
+              <label className="standalone-label">{v2Text(language, "mode")}<select value={theme} onChange={async (event) => { const value = event.target.value as typeof theme; setTheme(value); await setPreference("theme", value); }}><option value="system">{v2Text(language, "system")}</option><option value="light">{v2Text(language, "light")}</option><option value="dark">{v2Text(language, "dark")}</option></select></label>
+              <div className="theme-grid">{standardThemes.map((variant) => <button type="button" className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span style={{ background: variant.swatch }} /><strong>{variant.name}</strong></button>)}</div>
+            </article>
+            <button className="collection-link" onClick={() => setView("secrets")}><span>✦</span><div><strong>{v2Text(language, "secretCollection")}</strong><small>{v2Text(language, "secretSubtitle", { count: unlockedThemes.length, total: secretThemes.length })}</small></div><b>›</b></button>
             <article className="settings-card">
               <h2>{t("languageCurrency")}</h2>
               <div className="form-pair">
@@ -499,13 +605,23 @@ export function App() {
             </article>
           </section>
         )}
+        {view === "secrets" && (
+          <section>
+            <div className="section-title"><button onClick={() => setView("settings")}>‹ {t("settings")}</button><h1>{v2Text(language, "secretCollection")}</h1></div>
+            <article className="settings-card"><p>{v2Text(language, "localSecrets")}</p></article>
+            <article className="settings-card"><h2>{v2Text(language, "appIcon")}</h2><p>{v2Text(language, "appIconHelp")}</p><div className="app-icon-grid">{["default", "red", "black", "white"].map((id) => { const enabled = id === "default" || unlockedThemes.length > 0; return <button disabled={!enabled} className={`${launcherIcon === id ? "selected" : ""} icon-choice-${id}`} key={id} onClick={async () => { setLauncherIcon(id); await setPreference("launcherIcon", id); }}><span>{enabled ? <img src={launcherIconPath(id)} alt="" /> : "🔒"}</span><small>{id}</small></button>; })}</div></article>
+            <article className="settings-card"><h2>{t("secretThemes")}</h2><p>{t("unlockedCount", { count: unlockedThemes.length, total: secretThemes.length })}</p><div className="secret-theme-list">{secretThemes.map((variant) => { const unlocked = unlockedThemes.includes(variant.id); const [name, hint] = secretThemeTranslation(language, variant.id, variant.name, variant.hint); return <button type="button" disabled={!unlocked} className={themeVariant === variant.id ? "selected" : ""} key={variant.id} onClick={() => void selectThemeVariant(variant.id)}><span>{unlocked ? variant.icon : "⌾"}</span><div><strong>{name}</strong><small>{unlocked ? t("unlocked") : hint}</small></div></button>; })}</div></article>
+            <SobrietyBadges language={language} drinks={activeProfile?.id ? drinks.filter((drink) => drink.userId === activeProfile.id) : []} />
+          </section>
+        )}
       </main>
 
       <nav className="bottom-nav">
         <NavButton active={view === "home"} icon="⌂" label={t("home")} onClick={() => setView("home")} />
         <NavButton active={view === "history"} icon="◷" label={t("log")} onClick={() => setView("history")} />
+        <NavButton active={showDrinkForm} icon="＋" label={t("addDrink")} onClick={openNewDrink} />
         <NavButton active={view === "profiles"} icon="♙" label={t("profiles")} onClick={() => setView("profiles")} />
-        <NavButton active={view === "settings"} icon="⚙" label={t("more")} onClick={() => setView("settings")} />
+        <NavButton active={view === "settings" || view === "secrets"} icon="⚙" label={t("more")} onClick={() => setView("settings")} />
       </nav>
 
       {showProfileForm && (
@@ -683,17 +799,16 @@ function BacGauge({ bac, peak }: { bac: number; peak: number }) {
       context.restore();
 
       const peakAngle = startAngle + (currentPeak / maxScale) * totalSweep;
-      const peakX = centerX + Math.cos(peakAngle) * radius;
-      const peakY = centerY + Math.sin(peakAngle) * radius;
-      context.fillStyle = "#ff1744";
+      context.save();
+      context.translate(centerX, centerY);
+      context.rotate(peakAngle);
+      context.strokeStyle = "#ff1744";
+      context.lineWidth = 3;
       context.beginPath();
-      context.arc(peakX, peakY, 5, 0, Math.PI * 2);
-      context.fill();
-      context.strokeStyle = "#ffffff";
-      context.lineWidth = 1.5;
-      context.beginPath();
-      context.arc(peakX, peakY, 5, 0, Math.PI * 2);
+      context.moveTo(radius * 0.48, 0);
+      context.lineTo(radius - 5, 0);
       context.stroke();
+      context.restore();
 
       context.fillStyle = getComputedStyle(document.documentElement).getPropertyValue("--text").trim() || "#17201c";
       context.beginPath();
@@ -749,46 +864,59 @@ function bacLevelColor(level: ReturnType<typeof calculateCurrentBac>["bacLevel"]
   }
 }
 
-function ProfileStatusCard({ language, profile, result, expanded, onToggle, onActivate }: { language: Language; profile: UserProfile; result: ReturnType<typeof calculateCurrentBac>; expanded: boolean; onToggle: () => void; onActivate: () => void }) {
-  const isOverLimit = result.bacLevel === "OVER_LIMIT" || result.bacLevel === "PENAL_RISK" || result.bacLevel === "SEVERE_EBRIETY" || result.bacLevel === "CRITICAL_DANGER";
+function BacStatusCard({ language, profile, result, expanded, onToggle, projection }: { language: Language; profile: UserProfile; result: ReturnType<typeof calculateCurrentBac>; expanded: boolean; onToggle: () => void; projection: BacProjectionPoint[] }) {
+  const isOverLimit = result.bac >= 0.5;
   const levelColor = bacLevelColor(result.bacLevel);
-  const timeLabel = isOverLimit ? "NON GUIDARE" : result.estimatedMinutesUntilLegalLimit > 0 ? `Sotto 0,5 tra ${formatMinutes(result.estimatedMinutesUntilLegalLimit)}` : "Sotto 0,5";
-  const trendLabel = result.peakAlreadyPassed ? "In discesa" : "In salita";
+  const trendLabel = result.peakAlreadyPassed ? v2Text(language, "falling") : v2Text(language, "rising");
 
-  return <article className={`status-card ${profile.isActive ? "active" : ""}`}>
-    <div className="status-card-header">
-      <button type="button" className="status-main" onClick={onToggle}>
-        <div className="status-name-row">
-          <strong className={profile.isActive ? "active-name" : ""}>{profile.name}</strong>
-          {profile.isActive ? <span className="active-badge">ATTIVO</span> : <span className="activate-link">Attiva</span>}
-        </div>
-        <div className="status-compact-row">
-          <div>
-            <div className="status-bac" style={{ color: result.bac > 0.1 ? levelColor : undefined }}>{result.bac.toFixed(2)}</div>
-            <div className="status-unit">g/L</div>
-          </div>
-          <div className="status-side">
-            <span className={`level-pill level-${result.bacLevel.toLowerCase()}`} style={{ color: levelColor, borderColor: `${levelColor}55`, background: `${levelColor}22` }}>{bacLevelLabel(language, result.bacLevel)}</span>
-            <span className={`status-driving ${isOverLimit ? "danger" : ""}`}>{timeLabel}</span>
-          </div>
-        </div>
-      </button>
-      <div className="status-actions">
-        {!profile.isActive && <button type="button" className="inline-activate" onClick={onActivate}>Attiva</button>}
-        <button type="button" className="status-toggle" aria-label={expanded ? "Chiudi dettagli" : "Apri dettagli"} onClick={onToggle}>{expanded ? "⌃" : "⌄"}</button>
-      </div>
-    </div>
-    {expanded && <div className="status-expanded">
+  return <article className="status-card active" aria-label={`Stima BAC di ${profile.name}`}>
+    <div className="estimate-label">{v2Text(language, "estimateCurrent")}</div><p className="estimate-disclaimer">{v2Text(language, "estimateDisclaimer")}</p>
+    {result.isError ? <div className="estimate-error"><strong>—</strong><span>{v2Text(language, "estimateUnavailable")}</span><p>{v2Text(language, "checkProfile")}</p></div> : <>
       <BacGauge bac={result.bac} peak={result.projectedPeakBac} />
+      <span className={`level-pill level-${result.bacLevel.toLowerCase()}`} style={{ color: levelColor, borderColor: `${levelColor}55`, background: `${levelColor}22` }}>{bacLevelLabel(language, result.bacLevel)}</span>
+      <div className={`status-safety ${isOverLimit ? "danger" : result.estimatedMinutesUntilLegalLimit > 0 ? "warning" : "safe"}`}>{isOverLimit ? v2Text(language, "doNotDrive") : result.estimatedMinutesUntilLegalLimit > 0 ? v2Text(language, "underReferenceIn", { time: formatMinutes(result.estimatedMinutesUntilLegalLimit) }) : v2Text(language, "underReference")}</div>
+      <button className="details-toggle" onClick={onToggle}>{v2Text(language, expanded ? "hideDetails" : "showDetails")}</button>
+    </>}
+    {expanded && !result.isError && <div className="status-expanded">
       <div className="status-metrics">
-        <Metric label="Picco" value={`${result.projectedPeakBac.toFixed(2)} g/L`} />
-        <Metric label="Trend" value={trendLabel} />
+        <Metric label={v2Text(language, "peak")} value={`${result.projectedPeakBac.toFixed(2)} g/L`} />
+        <Metric label={v2Text(language, "trend")} value={trendLabel} />
       </div>
-      <div className={`status-safety ${isOverLimit ? "danger" : result.estimatedMinutesUntilLegalLimit > 0 ? "warning" : "safe"}`}>{isOverLimit ? "NON GUIDARE" : result.estimatedMinutesUntilLegalLimit > 0 ? `Torna sotto 0,5 tra ${formatMinutes(result.estimatedMinutesUntilLegalLimit)}` : "Sotto la soglia legale"}</div>
-      <p className="suggestion">"{bacSuggestion(language, result.bacLevel)}"</p>
-      {result.showHydrationReminder && <div className="hydration-reminder">Bevi acqua. Il ritmo della serata si sta alzando.</div>}
+      <div className="peak-legend"><span /> {v2Text(language, "peakNeedle")}</div>
+      <BacTimeline language={language} points={projection} />
+      <p className="suggestion">{bacSuggestion(language, result.bacLevel)}</p>
+      {result.showHydrationReminder && <div className="hydration-reminder">{v2Text(language, "hydration")}</div>}
     </div>}
   </article>;
+}
+
+function BacTimeline({ language, points }: { language: Language; points: BacProjectionPoint[] }) {
+  if (points.length < 2) return null;
+  const max = Math.max(0.8, ...points.map((point) => point.upperBound * 1.08));
+  const x = (index: number) => 8 + index * (304 / (points.length - 1));
+  const y = (value: number) => 118 - Math.min(max, Math.max(0, value)) / max * 104;
+  const line = points.map((point, index) => `${x(index)},${y(point.estimate)}`).join(" ");
+  const band = [...points.map((point, index) => `${x(index)},${y(point.upperBound)}`), ...points.map((point, index) => `${x(points.length - 1 - index)},${y(points[points.length - 1 - index].lowerBound)}`)].join(" ");
+  return <div className="timeline"><strong>{v2Text(language, "timeline")}</strong><svg viewBox="0 0 320 130" role="img" aria-label={v2Text(language, "timeline")}><line x1="8" x2="312" y1={y(0.5)} y2={y(0.5)} className="threshold" /><polygon points={band} className="uncertainty" /><polyline points={line} className="projection-line" /></svg><div><span>{translate(language, "now")}</span><span>{v2Text(language, "inEightHours")}</span></div><small>{v2Text(language, "uncertainty")}</small></div>;
+}
+
+function QuickDrinkRow({ language, options, onAdd }: { language: Language; options: QuickDrinkOption[]; onAdd: (option: QuickDrinkOption) => void }) {
+  if (!options.length) return null;
+  return <div className="quick-drinks"><strong>{v2Text(language, "quickAdd")}</strong><small>{v2Text(language, "favoriteRecent")}</small><div>{options.map((option) => <button key={option.key} onClick={() => onAdd(option)}><span>＋</span>{option.name}</button>)}</div></div>;
+}
+
+function SafeReturnCard({ language, trustedPhoneNumber, onShare }: { language: Language; trustedPhoneNumber: string; onShare: () => void }) {
+  return <article className="safe-return"><div><strong>{v2Text(language, "safeReturn")}</strong><small>{v2Text(language, "safeActions")}</small></div><div className="safe-actions"><a href="https://www.google.com/maps/search/?api=1&query=taxi+near+me" target="_blank" rel="noreferrer"><span>🚕</span>{v2Text(language, "taxi")}</a><a href={trustedPhoneNumber ? `tel:${trustedPhoneNumber}` : undefined} onClick={(event) => { if (!trustedPhoneNumber) { event.preventDefault(); alert(v2Text(language, "missingContact")); } }}><span>☎</span>{v2Text(language, "call")}</a><button onClick={onShare}><span>⌖</span>{v2Text(language, "location")}</button></div></article>;
+}
+
+function InstallHint({ language, onDismiss }: { language: Language; onDismiss: () => void }) {
+  return <article className="install-hint"><span>▣</span><div><strong>{v2Text(language, "installTitle")}</strong><small>{v2Text(language, "installIos")}</small><div><button onClick={() => alert(v2Text(language, "installIos"))}>{v2Text(language, "how")}</button><button onClick={onDismiss}>{v2Text(language, "notNow")}</button></div></div></article>;
+}
+
+function SobrietyBadges({ language, drinks }: { language: Language; drinks: DrinkEntry[] }) {
+  const days = drinks.length ? Math.max(0, Math.floor((new Date().setHours(0, 0, 0, 0) - new Date(Math.max(...drinks.map((drink) => drink.timestampMillis))).setHours(0, 0, 0, 0)) / 86_400_000)) : 0;
+  const labels: Record<Language, string[]> = { it: ["Un mese", "Tre mesi", "Sei mesi", "Un anno", "Due anni"], en: ["One month", "Three months", "Six months", "One year", "Two years"], es: ["Un mes", "Tres meses", "Seis meses", "Un año", "Dos años"], fr: ["Un mois", "Trois mois", "Six mois", "Un an", "Deux ans"], de: ["Ein Monat", "Drei Monate", "Sechs Monate", "Ein Jahr", "Zwei Jahre"] };
+  return <article className="settings-card"><h2>{v2Text(language, "sobrietyBadges")}</h2><p>{v2Text(language, "daysSinceDrink", { days })}</p><div className="badge-grid">{[30, 90, 180, 365, 730].map((target, index) => <div className={days >= target ? "unlocked" : ""} key={target}><span>{days >= target ? "✦" : "○"}</span><strong>{labels[language][index]}</strong><small>{Math.min(days, target)} / {target} {translate(language, "days")}</small></div>)}</div></article>;
 }
 
 function EventList({ language, events, profiles, onDelete, onEdit }: { language: Language; events: BacEvent[]; profiles: UserProfile[]; onDelete?: (event: BacEvent) => void; onEdit?: (event: BacEvent) => void }) {

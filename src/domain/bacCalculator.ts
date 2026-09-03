@@ -1,7 +1,7 @@
 import type { BacEvent, BacLevel, BacResult, BiologicalSex, StomachState, UserProfile } from "./models";
 
 const ALCOHOL_DENSITY = 0.789;
-const LEGAL_LIMIT = 0.5;
+const REFERENCE_THRESHOLD = 0.5;
 const STEP_HOURS = 1 / 60;
 const STEP_MILLIS = 60_000;
 const K_ABS_BASE = 4.5;
@@ -41,12 +41,12 @@ export function bacLevelFromValue(bac: number): BacLevel {
 }
 
 function suggestionForBac(bac: number): string {
-  if (bac <= 0.005) return "Sei perfettamente sobrio.";
-  if (bac < 0.5) return "Sotto il limite legale, ma presta attenzione.";
-  if (bac < 0.8) return "LIMITE SUPERATO. Non guidare.";
-  if (bac < 1.5) return "RISCHIO PENALE. Non guidare.";
-  if (bac < 2.8) return "EBBREZZA GRAVE. Resta con qualcuno.";
-  return "PERICOLO CRITICO. Chiama i soccorsi.";
+  if (bac <= 0.005) return "Nessun alcol stimato al momento.";
+  if (bac < 0.5) return "Stima sotto la soglia di riferimento. Non usarla per decidere se guidare.";
+  if (bac < 0.8) return "Stima elevata. Non guidare.";
+  if (bac < 1.5) return "Stima molto elevata. Non guidare e organizza un rientro sicuro.";
+  if (bac < 2.8) return "Possibile alterazione grave. Resta con una persona fidata.";
+  return "Possibile emergenza medica. Chiama subito i soccorsi.";
 }
 
 function project(
@@ -66,12 +66,12 @@ function project(
 
   for (let minute = 0; minute <= 60_000; minute += 1) {
     const currentBac = blood / volumeDistribution;
-    if (currentBac >= LEGAL_LIMIT) {
+    if (currentBac >= REFERENCE_THRESHOLD) {
       everExceeded = true;
       lastMinuteAbove = minute;
     }
     if (gut < 0.001 && blood < 0.001 && (mode === "peak" || !everExceeded)) break;
-    if (mode === "safe" && gut < 0.001 && currentBac < LEGAL_LIMIT && everExceeded) break;
+    if (mode === "safe" && gut < 0.001 && currentBac < REFERENCE_THRESHOLD && everExceeded) break;
 
     const kAbs = K_ABS_BASE * (1 - FOOD_DELAY_FACTOR * food);
     const absorbed = gut * (1 - Math.exp(-kAbs * STEP_HOURS));
@@ -87,6 +87,27 @@ function project(
 }
 
 export function calculateCurrentBac(user: UserProfile, events: BacEvent[], nowMillis = Date.now()): BacResult {
+  try {
+    if (!(user.weightKg > 0) || !(user.heightCm > 0) || !(user.age > 0)) throw new Error("Invalid profile data");
+    return calculateCurrentBacUnsafe(user, events, nowMillis);
+  } catch (cause) {
+    return {
+      bac: 0,
+      peakBac: 0,
+      projectedPeakBac: 0,
+      historicalPeakBac: 0,
+      peakAlreadyPassed: true,
+      bacLevel: "SOBER_SAFE",
+      estimatedMinutesUntilLegalLimit: 0,
+      suggestion: "",
+      showHydrationReminder: false,
+      isError: true,
+      errorMessage: cause instanceof Error ? cause.message : "BAC calculation failed"
+    };
+  }
+}
+
+function calculateCurrentBacUnsafe(user: UserProfile, events: BacEvent[], nowMillis: number): BacResult {
   const validEvents = events
     .filter((event) => event.timestamp >= nowMillis - MAX_LOOKBACK_MILLIS && event.timestamp <= nowMillis)
     .sort((a, b) => a.timestamp - b.timestamp);
@@ -148,8 +169,22 @@ export function calculateCurrentBac(user: UserProfile, events: BacEvent[], nowMi
     bacLevel: bacLevelFromValue(bac),
     estimatedMinutesUntilLegalLimit: project(alcoholBlood, alcoholGut, beta, volumeDistribution, foodLoad, "safe"),
     suggestion: suggestionForBac(bac),
-    showHydrationReminder: bac !== 0 && (sessionStrongDrinkCount >= 2 || sessionDrinkCount >= 4)
+    showHydrationReminder: bac !== 0 && (sessionStrongDrinkCount >= 2 || sessionDrinkCount >= 4),
+    isError: false,
+    errorMessage: null
   };
+}
+
+export function estimateMinutesUntilNextLevelChange(user: UserProfile, events: BacEvent[], nowMillis = Date.now()): number | null {
+  const current = calculateCurrentBac(user, events, nowMillis);
+  if (current.isError || (current.bac === 0 && current.projectedPeakBac === 0)) return null;
+  for (let minute = 1; minute <= 60_000; minute += 1) {
+    const projected = calculateCurrentBac(user, events, nowMillis + minute * STEP_MILLIS);
+    if (projected.isError) return null;
+    if (projected.bacLevel !== current.bacLevel) return minute;
+    if (projected.bac === 0 && projected.projectedPeakBac === 0) break;
+  }
+  return null;
 }
 
 function soberResult(): BacResult {
@@ -162,6 +197,8 @@ function soberResult(): BacResult {
     bacLevel: "SOBER_SAFE",
     estimatedMinutesUntilLegalLimit: 0,
     suggestion: suggestionForBac(0),
-    showHydrationReminder: false
+    showHydrationReminder: false,
+    isError: false,
+    errorMessage: null
   };
 }
