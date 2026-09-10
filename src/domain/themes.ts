@@ -4,6 +4,21 @@ export type ThemeVariant =
   | "classic" | "mint" | "spritz" | "night" | "blackout" | "dawn" | "margarita" | "blue_lagoon"
   | "camping_beach" | "beer_bottle" | "vodka" | "tomorrow_aftermath" | "closed_bar" | "broken_heart";
 
+export type ImmersiveThemeVariant = Extract<
+  ThemeVariant,
+  "camping_beach" | "beer_bottle" | "vodka" | "tomorrow_aftermath" | "closed_bar" | "broken_heart"
+>;
+
+export type RetroInput = "UP" | "DOWN" | "LEFT" | "RIGHT" | "B" | "A";
+
+export const KONAMI_SEQUENCE: readonly RetroInput[] = ["UP", "UP", "DOWN", "DOWN", "LEFT", "RIGHT", "LEFT", "RIGHT", "B", "A"];
+
+export function advanceKonamiCode(currentIndex: number, input: RetroInput): { index: number; completed: boolean } {
+  const expected = KONAMI_SEQUENCE[currentIndex] ?? KONAMI_SEQUENCE[0];
+  const nextIndex = input === expected ? currentIndex + 1 : input === KONAMI_SEQUENCE[0] ? 1 : 0;
+  return nextIndex >= KONAMI_SEQUENCE.length ? { index: 0, completed: true } : { index: nextIndex, completed: false };
+}
+
 export const standardThemes: { id: ThemeVariant; name: string; swatch: string }[] = [
   { id: "classic", name: "Dry Martini", swatch: "#007a63" },
   { id: "mint", name: "Mojito", swatch: "#63dbb9" },
@@ -12,16 +27,16 @@ export const standardThemes: { id: ThemeVariant; name: string; swatch: string }[
   { id: "blackout", name: "Black Russian", swatch: "#050507" },
   { id: "dawn", name: "Moscow Mule", swatch: "#d35400" },
   { id: "margarita", name: "Margarita", swatch: "#81c784" },
-    { id: "blue_lagoon", name: "Blue Lagoon", swatch: "#4dd0e1" }
-    /*,{ id: "camping_beach", name: "Camping Beach", swatch: "#23b7ce" }*/
+  { id: "blue_lagoon", name: "Blue Lagoon", swatch: "#4dd0e1" },
+  { id: "camping_beach", name: "Camping Beach", swatch: "#23b7ce" }
 ];
 
 export const secretThemes: { id: ThemeVariant; name: string; hint: string; icon: string }[] = [
-  //{ id: "beer_bottle", name: "Bottiglia di birra", hint: "Una giornata decisamente maltata.", icon: "🍺" },
-  //{ id: "vodka", name: "Universo nella bottiglia", hint: "Una maratona nelle ultime 24 ore.", icon: "✦" },
-  //{ id: "tomorrow_aftermath", name: "Il giorno dopo...", hint: "Una sessione che attraversa la mezzanotte.", icon: "☀" },
-  //{ id: "closed_bar", name: "Bar chiuso", hint: "Passa di qui quando tutti dormono.", icon: "☾" },
-  //{ id: "broken_heart", name: "Cuore infranto", hint: "Una settimana che lascia il segno.", icon: "♥" }
+  { id: "beer_bottle", name: "Bottiglia di birra", hint: "Una giornata decisamente maltata.", icon: "🍺" },
+  { id: "vodka", name: "Universo nella bottiglia", hint: "Una maratona nelle ultime 24 ore.", icon: "✦" },
+  { id: "tomorrow_aftermath", name: "Il giorno dopo...", hint: "Una sessione che attraversa la mezzanotte.", icon: "☀" },
+  { id: "closed_bar", name: "Bar chiuso", hint: "Passa di qui quando tutti dormono.", icon: "☾" },
+  { id: "broken_heart", name: "Cuore infranto", hint: "Una settimana che lascia il segno.", icon: "♥" }
 ];
 
 const allThemeVariants = new Set<ThemeVariant>([
@@ -31,6 +46,10 @@ const allThemeVariants = new Set<ThemeVariant>([
 
 export function isThemeVariant(value: unknown): value is ThemeVariant {
   return typeof value === "string" && allThemeVariants.has(value as ThemeVariant);
+}
+
+export function isImmersiveTheme(value: ThemeVariant): value is ImmersiveThemeVariant {
+  return value === "camping_beach" || secretThemes.some((theme) => theme.id === value);
 }
 
 const dayKey = (timestamp: number) => {

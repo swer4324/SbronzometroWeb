@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ImmersiveThemeBackground } from "./components/ImmersiveThemeBackground";
 import {
   addDrink,
   addMeal,
@@ -22,7 +23,7 @@ import { calculateCurrentBac } from "./domain/bacCalculator";
 import { calculateWeeklyReports, completedEveningCount } from "./domain/weeklyReports";
 import { buildBacProjection, buildQuickDrinkOptions, type BacProjectionPoint, type QuickDrinkOption } from "./domain/home";
 import { hydrationReminderDelayMs, previousEveningDrinks, requestNotificationPermission, shouldFireMorningSummary, shouldFirePlannedReminder, showLocalNotification } from "./domain/notifications";
-import { evaluateThemeUnlocks, isThemeVariant, secretThemes, standardThemes, type ThemeVariant } from "./domain/themes";
+import { advanceKonamiCode, evaluateThemeUnlocks, isImmersiveTheme, isThemeVariant, secretThemes, standardThemes, type RetroInput, type ThemeVariant } from "./domain/themes";
 import { bacLevelLabel, bacSuggestion, disclaimerTranslations, drinkTemplateName, languageNames, localeFor, mealLabel, onboardingTranslations, secretThemeTranslation, translate, type Language } from "./domain/i18n";
 import { v2Text } from "./domain/v2i18n";
 import {
@@ -115,6 +116,9 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [, setClock] = useState(Date.now());
   const previousBacLevelRef = useRef<{ profileId: number; level: BacLevel } | null>(null);
+  const [versionTapCount, setVersionTapCount] = useState(0);
+  const [showRetroController, setShowRetroController] = useState(false);
+  const [konamiIndex, setKonamiIndex] = useState(0);
   const validSecretThemeIds = secretThemes.map((variant) => variant.id);
 
   const activeProfile = profiles.find((profile) => profile.isActive) ?? profiles[0];
@@ -271,6 +275,26 @@ export function App() {
       setThemeVariant("classic");
       setError(cause instanceof Error ? cause.message : "Impossibile applicare il tema.");
     }
+  }
+
+  function tapVersion() {
+    setVersionTapCount((current) => {
+      const next = current + 1;
+      if (next < 10) return next;
+      setShowRetroController(true);
+      setKonamiIndex(0);
+      setToast(v2Text(language, "testModeAvailable"));
+      return 0;
+    });
+  }
+
+  async function registerRetroInput(input: RetroInput) {
+    const next = advanceKonamiCode(konamiIndex, input);
+    setKonamiIndex(next.index);
+    if (!next.completed) return;
+    setUnlockedThemes([...validSecretThemeIds]);
+    await setPreference("unlockedThemes", [...validSecretThemeIds]);
+    setToast(v2Text(language, "allThemesUnlocked"));
   }
 
   async function submitProfile(event: React.FormEvent) {
@@ -453,8 +477,8 @@ export function App() {
   if (!onboardingCompleted) return <OnboardingScreen language={language} step={onboardingStep} onNext={async () => { if (onboardingStep >= 3) { await setPreference("onboardingCompleted", true); setOnboardingCompleted(true); setOnboardingStep(0); } else setOnboardingStep(onboardingStep + 1); }} onSkip={async () => { await setPreference("onboardingCompleted", true); setOnboardingCompleted(true); setOnboardingStep(0); }} />;
 
   return (
-    <div className={`app-shell variant-${themeVariant}`}>
-      {["beer_bottle", "vodka", "tomorrow_aftermath", "closed_bar", "broken_heart", "camping_beach"].includes(themeVariant) && <div className="immersive-background" aria-hidden="true"><span /><span /><span /></div>}
+    <div className={`app-shell variant-${themeVariant} ${isImmersiveTheme(themeVariant) ? "immersive" : ""}`}>
+      {isImmersiveTheme(themeVariant) && <ImmersiveThemeBackground variant={themeVariant} />}
       <header className="topbar">
         <button className="brand" onClick={() => setView("home")}>
           <span className={`brand-mark icon-${launcherIcon}`}>S</span>
@@ -603,6 +627,8 @@ export function App() {
               <button type="button" className="secondary-action" onClick={() => { setOnboardingStep(0); setOnboardingCompleted(false); }}>{t("reviewIntro")}</button>
               <button type="button" className="secondary-action" onClick={() => { setTosAccepted(false); setDisclaimerAccepted(false); }}>{t("reviewWarning")}</button>
             </article>
+            {showRetroController && <article className="settings-card retro-settings"><h2>{v2Text(language, "retroTest")}</h2><p>{v2Text(language, "retroHelp")}</p><RetroController progress={konamiIndex} onInput={(input) => void registerRetroInput(input)} /></article>}
+            <button type="button" className="version-easter-egg" onClick={tapVersion} aria-label={v2Text(language, "appVersion")}>{v2Text(language, "appVersion")}</button>
           </section>
         )}
         {view === "secrets" && (
@@ -960,6 +986,23 @@ function Modal({ title, closeLabel, onClose, children }: { title: string; closeL
 
 function NavButton({ active, icon, label, onClick }: { active: boolean; icon: string; label: string; onClick: () => void }) {
   return <button className={active ? "active" : ""} onClick={onClick}><span>{icon}</span><small>{label}</small></button>;
+}
+
+function RetroController({ progress, onInput }: { progress: number; onInput: (input: RetroInput) => void }) {
+  const control = (input: RetroInput, label: string, className = "") => <button type="button" className={className} aria-label={input} onClick={() => onInput(input)}>{label}</button>;
+  return <div className="retro-controller">
+    <div className="retro-progress" aria-label={`${progress} / 10`}>{Array.from({ length: 10 }, (_, index) => <span className={index < progress ? "active" : ""} key={index} />)}</div>
+    <div className="retro-controls">
+      <div className="d-pad">
+        {control("UP", "↑", "up")}
+        {control("LEFT", "←", "left")}
+        <i aria-hidden="true" />
+        {control("RIGHT", "→", "right")}
+        {control("DOWN", "↓", "down")}
+      </div>
+      <div className="action-pad">{control("B", "B", "button-b")}{control("A", "A", "button-a")}</div>
+    </div>
+  </div>;
 }
 
 function formatMinutes(minutes: number): string {

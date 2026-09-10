@@ -67,7 +67,12 @@ const text = {
   morningBody: ["{count} drink · {spent} registrati · picco stimato {peak}", "{count} drinks · {spent} logged · estimated peak {peak}", "{count} bebidas · {spent} registrados · pico estimado {peak}", "{count} boissons · {spent} enregistrés · pic estimé {peak}", "{count} Getränke · {spent} erfasst · geschätzter Höchstwert {peak}"],
   hydrationTitle: ["Ehi {name}! 💧", "Hey {name}! 💧", "¡Hola {name}! 💧", "Salut {name} ! 💧", "Hey {name}! 💧"],
   notificationsOn: ["Notifiche attivate", "Notifications enabled", "Notificaciones activadas", "Notifications activées", "Benachrichtigungen aktiviert"],
-  notificationsDenied: ["Permesso notifiche non concesso", "Notification permission not granted", "Permiso de notificaciones no concedido", "Autorisation de notification refusée", "Benachrichtigungsberechtigung nicht erteilt"]
+  notificationsDenied: ["Permesso notifiche non concesso", "Notification permission not granted", "Permiso de notificaciones no concedido", "Autorisation de notification refusée", "Benachrichtigungsberechtigung nicht erteilt"],
+  testModeAvailable: ["Modalità test disponibile", "Test mode available", "Modo de prueba disponible", "Mode test disponible", "Testmodus verfügbar"],
+  retroTest: ["Controller retro di test", "Retro test controller", "Mando retro de prueba", "Manette rétro de test", "Retro-Testcontroller"],
+  retroHelp: ["Inserisci il codice classico per sbloccare tutti i temi cosmetici.", "Enter the classic code to unlock every cosmetic theme.", "Introduce el código clásico para desbloquear todos los temas visuales.", "Saisissez le code classique pour débloquer tous les thèmes visuels.", "Den klassischen Code eingeben, um alle optischen Themes freizuschalten."],
+  allThemesUnlocked: ["Tutti i temi segreti sono stati sbloccati", "All secret themes have been unlocked", "Se han desbloqueado todos los temas secretos", "Tous les thèmes secrets ont été débloqués", "Alle geheimen Themes wurden freigeschaltet"],
+  appVersion: ["Sbronzometro 2.0.0b · Web", "Sbronzometro 2.0.0b · Web", "Sbronzometro 2.0.0b · Web", "Sbronzometro 2.0.0b · Web", "Sbronzometro 2.0.0b · Web"]
 } as const;
 
 export type V2TextKey = keyof typeof text;
