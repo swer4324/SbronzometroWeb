@@ -9,6 +9,24 @@
     <link rel="icon" href="./icon.svg" />
     <link rel="apple-touch-icon" sizes="512x512" href="./icon-512.png" />
     <title>Sbronzometro</title>
+    <!-- SOURCE_DEPLOYMENT_REDIRECT_START -->
+    <script>
+      // GitHub Pages is currently configured to publish the repository root.
+      // Redirect that source-only entry point to the production build in /docs.
+      (function () {
+        var repoRoot = "/SbronzometroWeb/";
+        var isRepositorySource =
+          window.location.pathname === repoRoot ||
+          window.location.pathname === repoRoot + "index.html";
+        if (isRepositorySource) {
+          var productionUrl = new URL("./docs/", window.location.href);
+          productionUrl.search = window.location.search;
+          productionUrl.hash = window.location.hash;
+          window.location.replace(productionUrl.href);
+        }
+      })();
+    </script>
+    <!-- SOURCE_DEPLOYMENT_REDIRECT_END -->
   </head>
   <body>
     <div id="root"></div>

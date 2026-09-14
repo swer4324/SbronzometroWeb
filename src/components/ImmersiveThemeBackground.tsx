@@ -53,6 +53,27 @@ function addVignette(context: CanvasRenderingContext2D, width: number, height: n
   context.fillRect(0, 0, width, height);
 }
 
+function roundedRect(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+) {
+  const safeRadius = Math.max(0, Math.min(radius, Math.abs(width) / 2, Math.abs(height) / 2));
+  context.moveTo(x + safeRadius, y);
+  context.lineTo(x + width - safeRadius, y);
+  context.arcTo(x + width, y, x + width, y + safeRadius, safeRadius);
+  context.lineTo(x + width, y + height - safeRadius);
+  context.arcTo(x + width, y + height, x + width - safeRadius, y + height, safeRadius);
+  context.lineTo(x + safeRadius, y + height);
+  context.arcTo(x, y + height, x, y + height - safeRadius, safeRadius);
+  context.lineTo(x, y + safeRadius);
+  context.arcTo(x, y, x + safeRadius, y, safeRadius);
+  context.closePath();
+}
+
 function drawVodka(
   context: CanvasRenderingContext2D,
   width: number,
@@ -409,7 +430,7 @@ function drawClosedBar(
   facade.addColorStop(1, "#0c1016");
   context.fillStyle = facade;
   context.beginPath();
-  context.roundRect(fx, fy, fw, fh, 18);
+  roundedRect(context, fx, fy, fw, fh, 18);
   context.fill();
 
   const storefrontX = fx + fw * 0.05;
@@ -418,7 +439,7 @@ function drawClosedBar(
   const storefrontH = fh * 0.56;
   context.fillStyle = "#0f1318";
   context.beginPath();
-  context.roundRect(storefrontX, storefrontY, storefrontW, storefrontH, 12);
+  roundedRect(context, storefrontX, storefrontY, storefrontW, storefrontH, 12);
   context.fill();
 
   const shutterX = storefrontX + storefrontW * 0.07;
@@ -446,7 +467,7 @@ function drawClosedBar(
   const doorH = storefrontH * 0.8;
   context.fillStyle = "#0b0f14";
   context.beginPath();
-  context.roundRect(doorX, doorY, doorW, doorH, 9);
+  roundedRect(context, doorX, doorY, doorW, doorH, 9);
   context.fill();
   context.strokeStyle = "rgba(255,255,255,.12)";
   context.beginPath();
@@ -465,7 +486,7 @@ function drawClosedBar(
   context.strokeStyle = `rgba(231,82,82,${0.72 + glow})`;
   context.lineWidth = 3;
   context.beginPath();
-  context.roundRect(signX, signY, signW, signH, 10);
+  roundedRect(context, signX, signY, signW, signH, 10);
   context.stroke();
   context.fillStyle = `rgba(239,104,104,${0.88 + glow * 0.1})`;
   context.font = `800 ${Math.max(16, signH * 0.47)}px Inter, sans-serif`;
@@ -481,7 +502,7 @@ function drawClosedBar(
   reflection.addColorStop(1, "rgba(196,71,71,0)");
   context.fillStyle = reflection;
   context.beginPath();
-  context.roundRect(signX, pavement - 5, signW, height - pavement + 20, 20);
+  roundedRect(context, signX, pavement - 5, signW, height - pavement + 20, 20);
   context.fill();
 
   drizzle.forEach((drop) => {
@@ -635,11 +656,13 @@ export function ImmersiveThemeBackground({ variant }: { variant: ImmersiveThemeV
       if (!reduceMotion) frame = window.requestAnimationFrame(render);
     };
 
-    const observer = new ResizeObserver(() => {
+    const handleResize = () => {
       resize();
       if (reduceMotion) render(0);
-    });
-    observer.observe(canvas);
+    };
+    const observer = "ResizeObserver" in window ? new ResizeObserver(handleResize) : null;
+    if (observer) observer.observe(canvas);
+    else window.addEventListener("resize", handleResize, { passive: true });
     window.addEventListener("pointermove", updatePointer, { passive: true });
     window.addEventListener("deviceorientation", updateOrientation, { passive: true });
     resize();
@@ -647,7 +670,8 @@ export function ImmersiveThemeBackground({ variant }: { variant: ImmersiveThemeV
 
     return () => {
       disposed = true;
-      observer.disconnect();
+      observer?.disconnect();
+      if (!observer) window.removeEventListener("resize", handleResize);
       window.removeEventListener("pointermove", updatePointer);
       window.removeEventListener("deviceorientation", updateOrientation);
       window.cancelAnimationFrame(frame);

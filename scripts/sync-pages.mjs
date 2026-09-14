@@ -1,5 +1,5 @@
-import { cp, mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { cp, mkdir, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const currentDir = dirname(fileURLToPath(import.meta.url));
@@ -7,9 +7,14 @@ const webRoot = resolve(currentDir, "..");
 const distDir = resolve(webRoot, "dist");
 const docsDir = resolve(webRoot, "docs");
 
+if (dirname(docsDir) !== webRoot || basename(docsDir) !== "docs") {
+  throw new Error(`Refusing to clean unexpected deployment directory: ${docsDir}`);
+}
+
+// docs is generated output. Recreate it so hashed assets from older releases
+// cannot be published beside the current application bundle.
+await rm(docsDir, { recursive: true, force: true });
 await mkdir(docsDir, { recursive: true });
-// Keep deployment-only files such as _headers and legal PDFs that are not part
-// of Vite's dist directory while refreshing every generated asset.
 await cp(distDir, docsDir, { recursive: true, force: true });
 await writeFile(resolve(docsDir, ".nojekyll"), "");
 

@@ -1,6 +1,25 @@
 import { defineConfig } from "vite";
+import type { Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
+
+const sourceRedirectStart = "<!-- SOURCE_DEPLOYMENT_REDIRECT_START -->";
+const sourceRedirectEnd = "<!-- SOURCE_DEPLOYMENT_REDIRECT_END -->";
+
+const stripSourceDeploymentRedirect: Plugin = {
+  name: "strip-source-deployment-redirect",
+  apply: "build",
+  transformIndexHtml(html) {
+    const start = html.indexOf(sourceRedirectStart);
+    const end = html.indexOf(sourceRedirectEnd);
+    if (start < 0 || end < start) return html;
+    const lineStart = html.lastIndexOf("\n", start) + 1;
+    const markerEnd = end + sourceRedirectEnd.length;
+    const nextLine = html.indexOf("\n", markerEnd);
+    const lineEnd = nextLine < 0 ? markerEnd : nextLine + 1;
+    return html.slice(0, lineStart) + html.slice(lineEnd);
+  }
+};
 
 export default defineConfig({
   base: "./",
@@ -8,6 +27,7 @@ export default defineConfig({
     target: "es2015"
   },
   plugins: [
+    stripSourceDeploymentRedirect,
     react(),
     VitePWA({
       registerType: "autoUpdate",

@@ -80,6 +80,6 @@ const languageIndex: Record<Language, number> = { it: 0, en: 1, es: 2, fr: 3, de
 
 export function v2Text(language: Language, key: V2TextKey, values: Record<string, string | number> = {}): string {
   let result: string = text[key][languageIndex[language]];
-  for (const [name, value] of Object.entries(values)) result = result.replaceAll(`{${name}}`, String(value));
+  for (const [name, value] of Object.entries(values)) result = result.split(`{${name}}`).join(String(value));
   return result;
 }

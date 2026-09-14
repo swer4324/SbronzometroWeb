@@ -194,8 +194,12 @@ export function App() {
       document.documentElement.dataset.variant = themeVariant;
     };
     apply();
-    media.addEventListener("change", apply);
-    return () => media.removeEventListener("change", apply);
+    if (typeof media.addEventListener === "function") {
+      media.addEventListener("change", apply);
+      return () => media.removeEventListener("change", apply);
+    }
+    media.addListener(apply);
+    return () => media.removeListener(apply);
   }, [theme, themeVariant]);
 
   useEffect(() => {

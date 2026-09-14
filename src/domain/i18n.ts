@@ -147,7 +147,7 @@ const secondaryTranslations: Record<Exclude<Language, "it" | "en">, Record<Trans
 
 export function translate(language: Language, key: TranslationKey, values: Record<string, string | number> = {}): string {
   const source = language === "it" || language === "en" ? translations[language][key] : secondaryTranslations[language][key];
-  return Object.entries(values).reduce((text, [name, value]) => text.replaceAll(`{${name}}`, String(value)), source);
+  return Object.entries(values).reduce((text, [name, value]) => text.split(`{${name}}`).join(String(value)), source);
 }
 
 export function localeFor(language: Language): string {

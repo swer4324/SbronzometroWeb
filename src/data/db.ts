@@ -178,7 +178,10 @@ export async function getAllPreferences(): Promise<Record<string, unknown>> {
   const entries = await requestToPromise<Array<{ key: string; value: unknown }>>(
     db.transaction(STORES.preferences).objectStore(STORES.preferences).getAll()
   );
-  return Object.fromEntries(entries.map(({ key, value }) => [key, value]));
+  return entries.reduce<Record<string, unknown>>((preferences, { key, value }) => {
+    preferences[key] = value;
+    return preferences;
+  }, {});
 }
 
 export async function exportBackup(): Promise<string> {
